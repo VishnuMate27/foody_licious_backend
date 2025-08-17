@@ -15,34 +15,28 @@ def register():
         data = request.get_json()
         print("I am here0")
         # Validate required fields
-        required_fields = ['_id','name']
+        required_fields = ['id','name','authProvider']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({"error": f"{field} is required"}), 400
         print("I am here0.1")
-        id = data['_id']
+        id = data['id']
         email = data['email'].lower().strip()
         name = data['name'].strip()
         phone = data['phone']
+        authProvider = data['authProvider']
         print("I am here0.2")
         # Validate email format
         if not User.validate_email(email):
             return jsonify({"error": "Invalid email format"}), 400
         print("I am here0.3")
+        
         # Check if user already exists
-        # if User.find_by_email(email):
-        #     return jsonify({"error": "User with this email already exists"}), 409
+        if User.find_by_id(id):
+            return jsonify({"error": "User with this id already exists"}), 409
         
-        # Create new user
-        print("I am here0.4")
-        user = User(id, email, name, phone)
+        user = User(id, email, name, phone, authProvider)
         user_id = user.save()
-        print("I am here4")
-        
-        # # Create session
-        # session['user_id'] = user_id
-        # session['user_email'] = email
-        # session['user_role'] = "customer"
         
         return jsonify({
             "message": "User registered successfully",
