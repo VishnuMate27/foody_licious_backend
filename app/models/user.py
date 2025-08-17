@@ -15,8 +15,8 @@ def get_bcrypt():
 
 class User:
     def __init__(self, id, email, name, phone, authProvider):
-        self.email = email
         self.id = id
+        self.email = email
         self.name = name
         self.phone = phone
         self.email = email
@@ -35,10 +35,10 @@ class User:
     def save(self):
         """Save user to database"""
         user_data = {
+                "_id": self.id,
                 "email": self.email,
                 "name": self.name,
                 "phone": self.phone,
-                "id": self.id,
                 "address": {
                     "addressText":"",
                     "city":"",
@@ -62,7 +62,6 @@ class User:
     @staticmethod
     def find_by_id(user_id):
         """Find user by ID"""
-        print(mongo.db.users.find_one({"id": user_id}))
         return mongo.db.users.find_one({"id": user_id})
     
     @staticmethod

@@ -13,23 +13,19 @@ def register():
     """User registration endpoint"""
     try:
         data = request.get_json()
-        print("I am here0")
         # Validate required fields
         required_fields = ['id','name','authProvider']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({"error": f"{field} is required"}), 400
-        print("I am here0.1")
         id = data['id']
         email = data['email'].lower().strip()
         name = data['name'].strip()
         phone = data['phone']
         authProvider = data['authProvider']
-        print("I am here0.2")
         # Validate email format
         if not User.validate_email(email):
             return jsonify({"error": "Invalid email format"}), 400
-        print("I am here0.3")
         
         # Check if user already exists
         if User.find_by_id(id):
