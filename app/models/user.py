@@ -60,6 +60,11 @@ class User:
         return mongo.db.users.find_one({"email": email})
 
     @staticmethod
+    def find_by_phone(phone):
+        """Find user by phone"""
+        return mongo.db.users.find_one({"phone": phone})
+    
+    @staticmethod
     def find_by_id(user_id):
         """Find user by ID"""
         return mongo.db.users.find_one({"id": user_id})

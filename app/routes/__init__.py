@@ -1,3 +1,5 @@
+import firebase_admin
+from firebase_admin import credentials
 from flask import Flask
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
@@ -8,6 +10,7 @@ import os
 # Extensions
 mongo = PyMongo()
 bcrypt = Bcrypt()
+cred = credentials.Certificate("serviceAccountKey.json")
 
 def create_app():
     load_dotenv()  # Load from .env
@@ -22,6 +25,7 @@ def create_app():
     # Initialize extensions
     mongo.init_app(app)
     bcrypt.init_app(app)
+    firebase_admin.initialize_app(cred)
     CORS(app, supports_credentials=True)
     
     # Register Blueprints - Import inside function to avoid circular imports

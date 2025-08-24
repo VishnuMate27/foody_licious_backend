@@ -1,7 +1,11 @@
+import requests
+from requests.auth import HTTPBasicAuth
 from flask import Blueprint, request, jsonify, session, current_app
+from firebase_admin import auth as firebase_auth
 from app.models.user import User
 from bson.objectid import ObjectId
 from datetime import datetime
+import os
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -44,6 +48,150 @@ def register():
             }
         }), 201
         
+    except Exception as e:
+        return jsonify({"error": "Registration failed", "details": str(e)}), 500
+
+@auth_bp.route('/sendVerificationCode', methods=['POST'])
+def send_verification_code():
+    """Send verification code via Twilio Verify if user does not already exist"""
+    try:
+        data = request.get_json()
+
+        if 'phone' not in data or not data['phone']:
+            return jsonify({"error": "phone is required"}), 400
+
+        phone = data['phone'].strip()
+
+        # ✅ Check if user already exists in MongoDB
+        if User.find_by_phone(phone):
+            return jsonify({"error": "User with this phone already exists in MongoDB"}), 409
+
+        # ✅ Check if user already exists in Firebase
+        try:
+            fb_user = firebase_auth.get_user_by_phone_number(phone)
+            if fb_user:
+                return jsonify({"error": "User with this phone already exists in Firebase"}), 409
+        except firebase_auth.UserNotFoundError:
+            pass  # ✅ Safe, means phone is not registered in Firebase
+
+        # 🔹 If no user in MongoDB or Firebase → send Twilio OTP
+        TWILIO_SID = os.getenv("TWILIO_SID")
+        TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+        VERIFY_SERVICE_SID = os.getenv("VERIFY_SERVICE_SID")
+
+        url = f"https://verify.twilio.com/v2/Services/{VERIFY_SERVICE_SID}/Verifications"
+
+        response = requests.post(
+            url,
+            data={
+                "To": phone,
+                "Channel": "sms"
+            },
+            auth=HTTPBasicAuth(TWILIO_SID, TWILIO_AUTH_TOKEN)
+        )
+
+        # Twilio returns 201 Created on success
+        if response.status_code == 201:
+            return jsonify({
+                "message": "Verification code sent successfully",
+                "details": response.json()
+            }), 201
+        else:
+            return jsonify({
+                "error": "Failed to send verification code",
+                "details": response.json()
+            }), response.status_code
+
+    except Exception as e:
+        return jsonify({"error": "Verification request failed", "details": str(e)}), 500
+
+@auth_bp.route('/verifyCodeAndRegisterWithPhone', methods=['POST'])
+def verify_code_and_register_with_phone():
+    """Register user with phone number after Twilio Verify + Firebase + MongoDB"""
+    try:
+        data = request.get_json()
+
+        # Required fields (id removed)
+        required_fields = ['name', 'phone', 'authProvider', 'code']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+
+        name = data['name'].strip()
+        phone = data['phone'].strip()
+        authProvider = data['authProvider']
+        code = data['code'].strip()
+
+        # Validate phone format (basic E.164 check)
+        if not phone.startswith('+') or not phone[1:].isdigit():
+            return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
+
+        # ✅ Step 1: Verify OTP with Twilio
+        TWILIO_SID = os.getenv("TWILIO_SID")
+        TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+        VERIFY_SERVICE_SID = os.getenv("VERIFY_SERVICE_SID")
+
+        verify_url = f"https://verify.twilio.com/v2/Services/{VERIFY_SERVICE_SID}/VerificationCheck"
+
+        response = requests.post(
+            verify_url,
+            data={"To": phone, "Code": code},
+            auth=HTTPBasicAuth(TWILIO_SID, TWILIO_AUTH_TOKEN)
+        )
+
+        result = response.json()
+
+        if response.status_code != 200 or result.get("status") != "approved":
+            return jsonify({
+                "error": "Phone verification failed",
+                "details": result
+            }), 400
+
+        # ✅ Step 2: Check if user already exists in MongoDB
+        if User.find_by_phone(phone):
+            return jsonify({"error": "User with this phone already exists"}), 409
+
+        # ✅ Step 3: Check Firebase user
+        try:
+            existing_user = firebase_auth.get_user_by_phone_number(phone)
+            if not User.find_by_id(existing_user.uid):
+                user = User(existing_user.uid, None, name, phone, authProvider)
+                saved_id = user.save()
+            else:
+                saved_id = existing_user.uid
+
+            return jsonify({
+                "message": "User already exists in Firebase",
+                "firebaseUid": existing_user.uid,
+                "user": {
+                    "id": saved_id,
+                    "name": name,
+                    "phone": phone,
+                    "authProvider": authProvider
+                }
+            }), 200
+
+        except firebase_auth.UserNotFoundError:
+            # ✅ Step 4: No user → create new in Firebase
+            fb_user = firebase_auth.create_user(
+                phone_number=phone,
+                display_name=name
+            )
+
+            user = User(fb_user.uid, None, name, phone, authProvider)
+            saved_id = user.save()
+
+            return jsonify({
+                "message": "User registered successfully with phone",
+                "firebaseUid": fb_user.uid,
+                "user": {
+                    "id": saved_id,
+                    "name": name,
+                    "phone": phone,
+                    "authProvider": authProvider
+                }
+            }), 201
+
     except Exception as e:
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
