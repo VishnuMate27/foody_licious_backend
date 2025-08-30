@@ -195,68 +195,64 @@ def verify_code_and_register_with_phone():
     except Exception as e:
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
-# @auth_bp.route('/login', methods=['POST'])
-# def login():
-#     """User login endpoint"""
-#     try:
-#         data = request.get_json()
-        
-#         # Validate required fields
-#         if not data.get('email') or not data.get('password'):
-#             return jsonify({"error": "Email and password are required"}), 400
-        
-#         email = data['email'].lower().strip()
-#         password = data['password']
-        
-#         # Find user by email
-#         user = User.find_by_email(email)
-#         if not user:
-#             return jsonify({"error": "Invalid credentials"}), 401
-        
-#         # Check if user is active
-#         if not user.get('is_active', True):
-#             return jsonify({"error": "Account is deactivated"}), 401
-        
-#         # Verify password
-#         if not User.check_password(user['password'], password):
-#             return jsonify({"error": "Invalid credentials"}), 401
-        
-#         # Create session
-#         user_id = str(user['_id'])
-#         session['user_id'] = user_id
-#         session['user_email'] = user['email']
-#         session['user_role'] = user.get('role', 'customer')
-        
-#         # Update last login
-#         mongo = get_mongo()
-#         mongo.db.users.update_one(
-#             {"_id": user['_id']},
-#             {"$set": {"last_login": datetime.utcnow()}}
-#         )
-        
-#         return jsonify({
-#             "message": "Login successful",
-#             "user": {
-#                 "id": user_id,
-#                 "email": user['email'],
-#                 "first_name": user['first_name'],
-#                 "last_name": user['last_name'],
-#                 "role": user.get('role', 'customer')
-#             }
-#         }), 200
-        
-#     except Exception as e:
-#         return jsonify({"error": "Login failed", "details": str(e)}), 500
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """User login endpoint"""
+    try:
+        data = request.get_json()
 
-# @auth_bp.route('/logout', methods=['POST'])
-# def logout():
-#     """Logout user and clear session"""
-#     try:
-#         session.clear()
-#         return jsonify({"message": "Successfully logged out"}), 200
-        
-#     except Exception as e:
-#         return jsonify({"error": "Logout failed", "details": str(e)}), 500
+        # Always required
+        if 'authProvider' not in data or not data['authProvider']:
+            return jsonify({"error": "authProvider is required"}), 400
+
+        authProvider = data['authProvider']
+
+        # If provider = email → need email field
+        if authProvider == "email":
+            required_fields = ['email']
+        else:
+            required_fields = ['id']
+
+        # Validate required fields
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+
+        # Find user depending on provider
+        if authProvider == "email":
+            email = data['email'].lower().strip()
+            user = User.find_by_email(email)
+        else:
+            user_id = data['id']
+            user = User.find_by_id(user_id)
+
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        # Verify authProvider matches
+        if user.get("authProvider") != authProvider:
+            return jsonify({"error": "Authentication provider mismatch"}), 401
+
+        # Update last_login_at
+        User.update_last_login(user["_id"])
+
+        # Fetch updated user
+        updated_user = User.find_by_id(user["_id"])
+
+        return jsonify({
+            "message": "Login successful",
+            "user": {
+                "id": updated_user["_id"],
+                "email": updated_user["email"],
+                "name": updated_user["name"],
+                "phone": updated_user["phone"],
+                "authProvider": updated_user["authProvider"],
+                "last_login_at": updated_user["last_login_at"].isoformat() + "Z"
+            }
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Login failed", "details": str(e)}), 500
 
 # @auth_bp.route('/check-session', methods=['GET'])
 # def check_session():

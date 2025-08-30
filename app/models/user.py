@@ -31,6 +31,7 @@ class User:
         self.authProvider = authProvider
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
+        self.last_login_at = datetime.utcnow()
 
     def save(self):
         """Save user to database"""
@@ -50,6 +51,7 @@ class User:
                 "authProvider": self.authProvider,
                 "created_at": self.created_at,
                 "updated_at": self.updated_at,
+                "last_login_at": self.last_login_at
         }
         result = mongo.db.users.insert_one(user_data)
         return str(result.inserted_id)
@@ -67,7 +69,7 @@ class User:
     @staticmethod
     def find_by_id(user_id):
         """Find user by ID"""
-        return mongo.db.users.find_one({"id": user_id})
+        return mongo.db.users.find_one({"_id": user_id})
     
     @staticmethod
     def validate_email(email):
@@ -99,7 +101,16 @@ class User:
         """Update user data"""
         update_data['updated_at'] = datetime.utcnow()
         result = mongo.db.users.update_one(
-            {"id": user_id}, 
+            {"_id": user_id}, 
             {"$set": update_data}
+        )
+        return result.modified_count > 0
+    
+    @staticmethod
+    def update_last_login(user_id):
+        """Update last_login_at for user"""
+        result = mongo.db.users.update_one(
+            {"_id": user_id},
+            {"$set": {"last_login_at": datetime.utcnow()}}
         )
         return result.modified_count > 0
