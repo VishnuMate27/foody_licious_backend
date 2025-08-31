@@ -51,8 +51,8 @@ def register():
     except Exception as e:
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
-@auth_bp.route('/sendVerificationCode', methods=['POST'])
-def send_verification_code():
+@auth_bp.route('/sendVerificationCodeForRegistration', methods=['POST'])
+def send_verification_code_for_registration():
     """Send verification code via Twilio Verify if user does not already exist"""
     try:
         data = request.get_json()
@@ -250,6 +250,128 @@ def login():
                 "last_login_at": updated_user["last_login_at"].isoformat() + "Z"
             }
         }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Login failed", "details": str(e)}), 500
+
+@auth_bp.route('/sendVerificationCodeForLogin', methods=['POST'])
+def send_verification_code_for_login():
+    """Send verification code via Twilio Verify if user already exist"""
+    try:
+        data = request.get_json()
+
+        if 'phone' not in data or not data['phone']:
+            return jsonify({"error": "phone is required"}), 400
+
+        phone = data['phone'].strip()
+
+        # ✅ Check if user not exists in MongoDB
+        if not User.find_by_phone(phone):
+            return jsonify({"error": "User with this phone does not exists in MongoDB"}), 404
+
+        # ✅ Check if user not already exists in Firebase
+        try:
+            firebase_auth.get_user_by_phone_number(phone)
+        except firebase_auth.UserNotFoundError:
+            return jsonify({"error": "User with this phone does not exists in Firebase"}), 404
+
+        # 🔹 If no user in MongoDB or Firebase → send Twilio OTP
+        TWILIO_SID = os.getenv("TWILIO_SID")
+        TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+        VERIFY_SERVICE_SID = os.getenv("VERIFY_SERVICE_SID")
+
+        url = f"https://verify.twilio.com/v2/Services/{VERIFY_SERVICE_SID}/Verifications"
+
+        response = requests.post(
+            url,
+            data={
+                "To": phone,
+                "Channel": "sms"
+            },
+            auth=HTTPBasicAuth(TWILIO_SID, TWILIO_AUTH_TOKEN)
+        )
+
+        # Twilio returns 201 Created on success
+        if response.status_code == 201:
+            return jsonify({
+                "message": "Verification code sent successfully",
+                "details": response.json()
+            }), 200
+        else:
+            return jsonify({
+                "error": "Failed to send verification code",
+                "details": response.json()
+            }), response.status_code
+
+    except Exception as e:
+        return jsonify({"error": "Verification request failed", "details": str(e)}), 500
+
+@auth_bp.route('/verifyCodeAndLoginWithPhone', methods=['POST'])
+def verify_code_and_login_with_phone():
+    """Login user with phone number after Twilio Verify + Firebase + MongoDB"""
+    try:
+        data = request.get_json()
+
+        # Required fields (id removed)
+        required_fields = ['phone', 'authProvider', 'code']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+
+        phone = data['phone'].strip()
+        authProvider = data['authProvider']
+        code = data['code'].strip()
+
+        # Validate phone format (basic E.164 check)
+        if not phone.startswith('+') or not phone[1:].isdigit():
+            return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
+
+        # ✅ Step 1: Verify OTP with Twilio
+        TWILIO_SID = os.getenv("TWILIO_SID")
+        TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+        VERIFY_SERVICE_SID = os.getenv("VERIFY_SERVICE_SID")
+
+        verify_url = f"https://verify.twilio.com/v2/Services/{VERIFY_SERVICE_SID}/VerificationCheck"
+
+        response = requests.post(
+            verify_url,
+            data={"To": phone, "Code": code},
+            auth=HTTPBasicAuth(TWILIO_SID, TWILIO_AUTH_TOKEN)
+        )
+
+        result = response.json()
+
+        if response.status_code != 200 or result.get("status") != "approved":
+            return jsonify({
+                "error": "Phone verification failed",
+                "details": result
+            }), 400
+
+        # ✅ Step 2: Check if user not exists in MongoDB
+        if not User.find_by_phone(phone):
+            return jsonify({"error": "User with this phone does not exists in MongoDB"}), 404
+
+        # ✅ Step 3: Check Firebase user
+        try:
+            existing_user = firebase_auth.get_user_by_phone_number(phone)
+            if User.find_by_id(existing_user.uid):
+                user = User.find_by_id(existing_user.uid)
+                User.update_last_login(user["_id"])    
+
+            return jsonify({
+                "message": "User login successful!",
+                "firebaseUid": existing_user.uid,
+                "user": {
+                    "id": user["_id"],
+                    "name": user["name"],
+                    "phone": user["phone"],
+                    "authProvider": user["authProvider"]
+                }
+            }), 200
+
+        except firebase_auth.UserNotFoundError:
+            # User not exist in firebase
+            return jsonify({"message": "User with this phone does not exists"}), 404
 
     except Exception as e:
         return jsonify({"error": "Login failed", "details": str(e)}), 500
