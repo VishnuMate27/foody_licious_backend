@@ -33,8 +33,6 @@ def create_app():
     app.config["MONGO_URI"] = os.getenv("MONGODB_URI")
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
     
-    print("App Config", os.getenv("MONGODB_URI"))
-    
     # Initialize extensions
     mongo.init_app(app)
     bcrypt.init_app(app)

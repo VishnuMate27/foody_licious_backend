@@ -16,5 +16,5 @@ COPY . .
 # Hugging Face requires port 7860
 EXPOSE 7860
 
-# Run your Flask app
-CMD ["python", "run.py"]
+# Run with Gunicorn WSGI server
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:7860", "run:app"]
