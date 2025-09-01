@@ -1,0 +1,20 @@
+name: Deploy hosted/main branch to Hugging Face Spaces
+
+on:
+  push:
+    branches: 
+      - hosted
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Push to Hugging Face
+        uses: huggingface/hub@v0.12.0
+        with:
+          repo-token: ${{ secrets.HF_TOKEN }}
+          repo-id: vishnumate09/foody_licious_backend
