@@ -12,7 +12,6 @@ def get_bcrypt():
     return current_app.extensions['bcrypt']
 
 @user_bp.route('/profile', methods=['GET'])
-@login_required
 def get_profile():
     """Get current user profile"""
     try:
@@ -40,37 +39,39 @@ def get_profile():
         return jsonify({"error": "Failed to get profile", "details": str(e)}), 500
 
 @user_bp.route('/profile', methods=['PUT'])
-@login_required
 def update_profile():
     """Update current user profile"""
     try:
-        user_id = session['user_id']
         data = request.get_json()
         
         # Fields that can be updated
-        allowed_fields = ['first_name', 'last_name']
+        required_fields = ['id']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+                    
+        allowed_fields = ['name', 'email','phone', 'address']
         update_data = {}
         
         for field in allowed_fields:
             if field in data and data[field]:
-                update_data[field] = data[field].strip()
+                update_data[field] = data[field]
         
-        if not update_data:
-            return jsonify({"error": "No valid fields to update"}), 400
+        id = data['id']       
         
         # Update user
-        success = User.update_user(user_id, update_data)
+        success = User.update_user(id, update_data)
         if not success:
             return jsonify({"error": "Failed to update profile"}), 500
         
         # Get updated user data
-        user = User.find_by_id(user_id)
+        user = User.find_by_id(id)
         user_data = {
-            "id": str(user['_id']),
+            "id": user['_id'],
             "email": user['email'],
-            "first_name": user['first_name'],
-            "last_name": user['last_name'],
-            "role": user.get('role', 'customer')
+            "name": user['name'],
+            "phone": user['phone'],
+            "address": user['address']
         }
         
         return jsonify({

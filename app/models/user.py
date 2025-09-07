@@ -1,5 +1,6 @@
 from flask import current_app
 from app.routes import mongo
+from app.utils.mongo_utils import flatten 
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from bson.objectid import ObjectId
@@ -100,9 +101,11 @@ class User:
     def update_user(user_id, update_data):
         """Update user data"""
         update_data['updated_at'] = datetime.utcnow()
+        # Flatten nested fields into dot-notation
+        flattened_data = flatten(update_data)
         result = mongo.db.users.update_one(
             {"_id": user_id}, 
-            {"$set": update_data}
+            {"$set": flattened_data}
         )
         return result.modified_count > 0
     
@@ -113,4 +116,4 @@ class User:
             {"_id": user_id},
             {"$set": {"last_login_at": datetime.utcnow()}}
         )
-        return result.modified_count > 0
+        return result.modified_count > 0   
