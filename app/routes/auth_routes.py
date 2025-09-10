@@ -45,6 +45,7 @@ def register():
                 "email": email,
                 "name": name,
                 "phone": phone,
+                "authProvider":authProvider,
             }
         }), 201
         

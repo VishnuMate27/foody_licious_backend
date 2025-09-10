@@ -71,6 +71,7 @@ def update_profile():
             "email": user['email'],
             "name": user['name'],
             "phone": user['phone'],
+            "authProvider": user['authProvider'],
             "address": user['address']
         }
         
