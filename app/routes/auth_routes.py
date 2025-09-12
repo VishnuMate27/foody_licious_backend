@@ -248,6 +248,7 @@ def login():
                 "name": updated_user["name"],
                 "phone": updated_user["phone"],
                 "authProvider": updated_user["authProvider"],
+                "address": updated_user["address"],
                 "last_login_at": updated_user["last_login_at"].isoformat() + "Z"
             }
         }), 200
@@ -365,8 +366,10 @@ def verify_code_and_login_with_phone():
                 "user": {
                     "id": user["_id"],
                     "name": user["name"],
+                    "email": user["email"],
                     "phone": user["phone"],
-                    "authProvider": user["authProvider"]
+                    "authProvider": user["authProvider"],
+                    "address": user['address']
                 }
             }), 200
 

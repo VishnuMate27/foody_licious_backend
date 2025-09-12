@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, session, current_app
 from app.models.user import User
 from app.utils.decorators import login_required, admin_required
+from firebase_admin import auth as firebase_auth
 from bson.objectid import ObjectId
 
 user_bp = Blueprint('users', __name__)
@@ -83,6 +84,46 @@ def update_profile():
     except Exception as e:
         return jsonify({"error": "Failed to update profile", "details": str(e)}), 500
 
+@user_bp.route("/delete_user", methods=["POST"])
+def delete_user():
+    try:
+        data = request.get_json()
+        
+        required_fields = ['id']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+            
+        id = data['id'] # same for Firebase and MongoDB   
+
+        # --- Step 1: Backup MongoDB user document (for rollback if needed) ---
+        user_doc = User.find_by_id(id)
+
+        # --- Step 2: Delete from Firebase Authentication ---
+        try:
+            firebase_auth.delete_user(id)
+        except firebase_auth.UserNotFoundError:
+            return jsonify({"error": "Firebase user not found"}), 404
+        except Exception as e:
+            return jsonify({"error": f"Firebase deletion failed: {str(e)}"}), 500
+
+        # --- Step 3: Delete from MongoDB ---
+        delete_response = User.delete_user(id)
+
+        if not delete_response:
+            # MongoDB deletion failed → rollback: reinsert the user_doc
+            if user_doc:
+                User.save(user_doc)
+            return jsonify({
+                "error": f"Failed to delete user {id} from MongoDB. Rolled back Firebase deletion."
+            }), 500
+
+        # --- Both deletions succeeded ---
+        return jsonify({"message": f"Successfully deleted user {id}"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @user_bp.route('/change-password', methods=['PUT'])
 @login_required
 def change_password():

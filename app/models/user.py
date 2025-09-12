@@ -110,6 +110,12 @@ class User:
         return result.modified_count > 0
     
     @staticmethod
+    def delete_user(user_id):
+        """Delete user data from MongoDB"""
+        result = mongo.db.users.delete_one({"_id": user_id})
+        return result.deleted_count > 0
+    
+    @staticmethod
     def update_last_login(user_id):
         """Update last_login_at for user"""
         result = mongo.db.users.update_one(
