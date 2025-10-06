@@ -15,11 +15,11 @@ def get_bcrypt():
     return current_app.extensions['bcrypt']
 
 class Restaurant:
-    def __init__(self, id, email, name, ownerName, phone, authProvider, photoUrl, description, menuItems, receivedOrders, receivedFeedback):
+    def __init__(self, id, email, name, phone, authProvider):
         self.id = id
         self.email = email
         self.name = name
-        self.ownerName = ownerName
+        self.ownerName = ""
         self.phone = phone
         self.address = {
                     "addressText":"",
@@ -30,11 +30,11 @@ class Restaurant:
                     }
                 }
         self.authProvider = authProvider
-        self.photoUrl = photoUrl
-        self.description = description
-        self.menuItems = menuItems
-        self.receivedOrders = receivedOrders
-        self.receivedFeedback = receivedFeedback
+        self.photoUrl = "photoUrl"
+        self.description = "description"
+        self.menuItems = []
+        self.receivedOrders = []
+        self.receivedFeedback = []
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
         self.last_login_at = datetime.utcnow()
@@ -65,23 +65,23 @@ class Restaurant:
                 "updated_at": self.updated_at,
                 "last_login_at": self.last_login_at
         }
-        result = mongo.db.restaurant.insert_one(restaurant_data)
+        result = mongo.db.restaurants.insert_one(restaurant_data)
         return str(result.inserted_id)
 
     @staticmethod
     def find_by_email(email):
         """Find restaurant by email"""
-        return mongo.db.restaurant.find_one({"email": email})
+        return mongo.db.restaurants.find_one({"email": email})
 
     @staticmethod
     def find_by_phone(phone):
         """Find restaurant by phone"""
-        return mongo.db.restaurant.find_one({"phone": phone})
+        return mongo.db.restaurants.find_one({"phone": phone})
     
     @staticmethod
     def find_by_id(restaurant_id):
         """Find restaurant by ID"""
-        return mongo.db.restaurant.find_one({"_id": restaurant_id})
+        return mongo.db.restaurants.find_one({"_id": restaurant_id})
     
     @staticmethod
     def validate_email(email):
@@ -108,7 +108,7 @@ class Restaurant:
         update_data['updated_at'] = datetime.utcnow()
         # Flatten nested fields into dot-notation
         flattened_data = flatten(update_data)
-        result = mongo.db.restaurant.update_one(
+        result = mongo.db.restaurants.update_one(
             {"_id": restaurant_id}, 
             {"$set": flattened_data}
         )
@@ -117,13 +117,13 @@ class Restaurant:
     @staticmethod
     def delete_restaurant(restaurant_id):
         """Delete restaurant data from MongoDB"""
-        result = mongo.db.restaurant.delete_one({"_id": restaurant_id})
+        result = mongo.db.restaurants.delete_one({"_id": restaurant_id})
         return result.deleted_count > 0
     
     @staticmethod
     def update_last_login(restaurant_id):
         """Update last_login_at for restaurant"""
-        result = mongo.db.restaurant.update_one(
+        result = mongo.db.restaurants.update_one(
             {"_id": restaurant_id},
             {"$set": {"last_login_at": datetime.utcnow()}}
         )
