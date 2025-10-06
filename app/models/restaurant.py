@@ -14,13 +14,13 @@ def get_mongo():
 def get_bcrypt():
     return current_app.extensions['bcrypt']
 
-class User:
-    def __init__(self, id, email, name, phone, authProvider):
+class Restaurant:
+    def __init__(self, id, email, name, ownerName, phone, authProvider, photoUrl, description, menuItems, receivedOrders, receivedFeedback):
         self.id = id
         self.email = email
         self.name = name
+        self.ownerName = ownerName
         self.phone = phone
-        self.email = email
         self.address = {
                     "addressText":"",
                     "city":"",
@@ -30,16 +30,22 @@ class User:
                     }
                 }
         self.authProvider = authProvider
+        self.photoUrl = photoUrl
+        self.description = description
+        self.menuItems = menuItems
+        self.receivedOrders = receivedOrders
+        self.receivedFeedback = receivedFeedback
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
         self.last_login_at = datetime.utcnow()
 
     def save(self):
-        """Save user to database"""
-        user_data = {
+        """Save restaurant to database"""
+        restaurant_data = {
                 "_id": self.id,
                 "email": self.email,
                 "name": self.name,
+                "ownerName": self.ownerName,
                 "phone": self.phone,
                 "address": {
                     "addressText":"",
@@ -50,27 +56,32 @@ class User:
                     }
                 },
                 "authProvider": self.authProvider,
+                "photoUrl": self.photoUrl,
+                "description": self.description,
+                "menuItems": self.menuItems,
+                "receivedOrders": self.receivedOrders,
+                "receivedFeedback": self.receivedFeedback,
                 "created_at": self.created_at,
                 "updated_at": self.updated_at,
                 "last_login_at": self.last_login_at
         }
-        result = mongo.db.users.insert_one(user_data)
+        result = mongo.db.restaurant.insert_one(restaurant_data)
         return str(result.inserted_id)
 
     @staticmethod
     def find_by_email(email):
-        """Find user by email"""
-        return mongo.db.users.find_one({"email": email})
+        """Find restaurant by email"""
+        return mongo.db.restaurant.find_one({"email": email})
 
     @staticmethod
     def find_by_phone(phone):
-        """Find user by phone"""
-        return mongo.db.users.find_one({"phone": phone})
+        """Find restaurant by phone"""
+        return mongo.db.restaurant.find_one({"phone": phone})
     
     @staticmethod
-    def find_by_id(user_id):
-        """Find user by ID"""
-        return mongo.db.users.find_one({"_id": user_id})
+    def find_by_id(restaurant_id):
+        """Find restaurant by ID"""
+        return mongo.db.restaurant.find_one({"_id": restaurant_id})
     
     @staticmethod
     def validate_email(email):
@@ -92,28 +103,28 @@ class User:
         return True, "Password is valid"
 
     @staticmethod
-    def update_user(user_id, update_data):
-        """Update user data"""
+    def update_restaurant(restaurant_id, update_data):
+        """Update restaurant data"""
         update_data['updated_at'] = datetime.utcnow()
         # Flatten nested fields into dot-notation
         flattened_data = flatten(update_data)
-        result = mongo.db.users.update_one(
-            {"_id": user_id}, 
+        result = mongo.db.restaurant.update_one(
+            {"_id": restaurant_id}, 
             {"$set": flattened_data}
         )
         return result.modified_count > 0
     
     @staticmethod
-    def delete_user(user_id):
-        """Delete user data from MongoDB"""
-        result = mongo.db.users.delete_one({"_id": user_id})
+    def delete_restaurant(restaurant_id):
+        """Delete restaurant data from MongoDB"""
+        result = mongo.db.restaurant.delete_one({"_id": restaurant_id})
         return result.deleted_count > 0
     
     @staticmethod
-    def update_last_login(user_id):
-        """Update last_login_at for user"""
-        result = mongo.db.users.update_one(
-            {"_id": user_id},
+    def update_last_login(restaurant_id):
+        """Update last_login_at for restaurant"""
+        result = mongo.db.restaurant.update_one(
+            {"_id": restaurant_id},
             {"$set": {"last_login_at": datetime.utcnow()}}
         )
         return result.modified_count > 0   

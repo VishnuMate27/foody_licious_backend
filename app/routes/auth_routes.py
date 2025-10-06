@@ -380,28 +380,3 @@ def verify_code_and_login_with_phone():
     except Exception as e:
         return jsonify({"error": "Login failed", "details": str(e)}), 500
 
-# @auth_bp.route('/check-session', methods=['GET'])
-# def check_session():
-#     """Check if user is logged in"""
-#     try:
-#         if 'user_id' not in session:
-#             return jsonify({"authenticated": False}), 401
-        
-#         user = User.find_by_id(session['user_id'])
-#         if not user or not user.get('is_active', True):
-#             session.clear()
-#             return jsonify({"authenticated": False}), 401
-        
-#         return jsonify({
-#             "authenticated": True,
-#             "user": {
-#                 "id": session['user_id'],
-#                 "email": session['user_email'],
-#                 "first_name": user['first_name'],
-#                 "last_name": user['last_name'],
-#                 "role": session.get('user_role', 'customer')
-#             }
-#         }), 200
-        
-#     except Exception as e:
-#         return jsonify({"error": "Session check failed", "details": str(e)}), 500
