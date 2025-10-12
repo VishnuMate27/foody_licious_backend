@@ -15,11 +15,11 @@ def get_bcrypt():
     return current_app.extensions['bcrypt']
 
 class Restaurant:
-    def __init__(self, id, email, name, phone, authProvider):
+    def __init__(self, id, email, ownerName, phone, authProvider, photoUrl):
         self.id = id
         self.email = email
-        self.name = name
-        self.ownerName = ""
+        self.ownerName = ownerName
+        self.name = ""
         self.phone = phone
         self.address = {
                     "addressText":"",
@@ -30,7 +30,7 @@ class Restaurant:
                     }
                 }
         self.authProvider = authProvider
-        self.photoUrl = "photoUrl"
+        self.photoUrl = photoUrl
         self.description = "description"
         self.menuItems = []
         self.receivedOrders = []
@@ -44,8 +44,8 @@ class Restaurant:
         restaurant_data = {
                 "_id": self.id,
                 "email": self.email,
-                "name": self.name,
                 "ownerName": self.ownerName,
+                "name": self.name,
                 "phone": self.phone,
                 "address": {
                     "addressText":"",

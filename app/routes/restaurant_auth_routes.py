@@ -18,15 +18,16 @@ def register():
     try:
         data = request.get_json()
         # Validate required fields
-        required_fields = ['id','name','authProvider']
+        required_fields = ['id','ownerName','authProvider']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({"error": f"{field} is required"}), 400
         id = data['id']
         email = data['email'].lower().strip()
-        name = data['name'].strip()
+        ownerName = data['ownerName'].strip()
         phone = data['phone']
         authProvider = data['authProvider']
+        photoUrl = data['photoUrl']
         # Validate email format
         if not Restaurant.validate_email(email):
             return jsonify({"error": "Invalid email format"}), 400
@@ -35,7 +36,7 @@ def register():
         if Restaurant.find_by_id(id):
             return jsonify({"error": "Restaurant with this id already exists"}), 409
         
-        restaurant = Restaurant(id, email, name, phone, authProvider)
+        restaurant = Restaurant(id, email, ownerName, phone, authProvider, photoUrl)
         restaurant_id = restaurant.save()
         
         return jsonify({
@@ -43,9 +44,10 @@ def register():
             "restaurant": {
                 "id": restaurant_id,
                 "email": email,
-                "name": name,
+                "ownerName": ownerName,
                 "phone": phone,
-                "authProvider":authProvider,
+                "authProvider": authProvider,
+                "photoUrl": photoUrl
             }
         }), 201
         
@@ -113,12 +115,12 @@ def verify_code_and_register_with_phone():
         data = request.get_json()
 
         # Required fields (id removed)
-        required_fields = ['name', 'phone', 'authProvider', 'code']
+        required_fields = ['ownerName', 'phone', 'authProvider', 'code']
         for field in required_fields:
             if field not in data or not data[field]:
                 return jsonify({"error": f"{field} is required"}), 400
 
-        name = data['name'].strip()
+        ownerName = data['ownerName'].strip()
         phone = data['phone'].strip()
         authProvider = data['authProvider']
         code = data['code'].strip()
@@ -156,7 +158,7 @@ def verify_code_and_register_with_phone():
         try:
             existing_user = firebase_auth.get_user_by_phone_number(phone)
             if not Restaurant.find_by_id(existing_user.uid):
-                restaurant = Restaurant(existing_user.uid, None, name, phone, authProvider)
+                restaurant = Restaurant(existing_user.uid, None, ownerName, phone, authProvider)
                 saved_id = restaurant.save()
             else:
                 saved_id = existing_user.uid
@@ -166,7 +168,7 @@ def verify_code_and_register_with_phone():
                 "firebaseUid": existing_user.uid,
                 "restaurant": {
                     "id": saved_id,
-                    "name": name,
+                    "ownerName": ownerName,
                     "phone": phone,
                     "authProvider": authProvider
                 }
@@ -176,10 +178,10 @@ def verify_code_and_register_with_phone():
             # ✅ Step 4: No user → create new in Firebase
             fb_user = firebase_auth.create_user(
                 phone_number=phone,
-                display_name=name
+                display_name=ownerName
             )
 
-            restaurant = Restaurant(fb_user.uid, None, name, phone, authProvider)
+            restaurant = Restaurant(fb_user.uid, None, ownerName, phone, authProvider)
             saved_id = restaurant.save()
 
             return jsonify({
@@ -187,7 +189,7 @@ def verify_code_and_register_with_phone():
                 "firebaseUid": fb_user.uid,
                 "restaurant": {
                     "id": saved_id,
-                    "name": name,
+                    "ownerName": ownerName,
                     "phone": phone,
                     "authProvider": authProvider
                 }
@@ -246,7 +248,7 @@ def login():
             "restaurant": {
                 "id": updated_restaurant["_id"],
                 "email": updated_restaurant["email"],
-                "name": updated_restaurant["name"],
+                "ownerName": updated_restaurant["ownerName"],
                 "phone": updated_restaurant["phone"],
                 "authProvider": updated_restaurant["authProvider"],
                 "address": updated_restaurant["address"],
@@ -366,7 +368,7 @@ def verify_code_and_login_with_phone():
                 "firebaseUid": existing_user.uid,
                 "restaurant": {
                     "id": restaurant["_id"],
-                    "name": restaurant["name"],
+                    "ownerName": restaurant["ownerName"],
                     "email": restaurant["email"],
                     "phone": restaurant["phone"],
                     "authProvider": restaurant["authProvider"],

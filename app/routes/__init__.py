@@ -50,8 +50,8 @@ def create_app():
     from app.routes.user_routes import user_bp
     app.register_blueprint(user_bp, url_prefix="/api/users")
     
-    # from app.routes.restaurant_routes import restaurant_bp
-    # app.register_blueprint(user_bp, url_prefix="/api/restaurant")
+    from app.routes.restaurant_routes import restaurant_bp
+    app.register_blueprint(restaurant_bp, url_prefix="/api/restaurants")
     
     # from app.routes.product_routes import product_bp
     # app.register_blueprint(product_bp, url_prefix="/api/products")
