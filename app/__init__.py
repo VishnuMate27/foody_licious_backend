@@ -10,8 +10,8 @@ import os
 import json
 
 # Extensions
-mongo = PyMongo()
-bcrypt = Bcrypt()
+from app.extensions import mongo, bcrypt, init_s3
+
 # Load Firebase credentials from Hugging Face secret
 firebase_creds = os.environ.get("FIREBASE_CREDENTIALS")
 
@@ -19,9 +19,12 @@ if firebase_creds:
     cred_dict = json.loads(firebase_creds)
     cred = credentials.Certificate(cred_dict)
 else:
-    cred = credentials.Certificate("serviceAccountKey.json")  # fallback for local
+    cred = credentials.Certificate("serviceAccountKey.json")  # fallback for local 
 
 def create_app():
+    global s3_client  # make accessible in other files via import
+
+    # Load .env (support for Hugging Face secrets)
     dotenv_content = os.environ.get("DOTENV_FILE")
     if dotenv_content:
         load_dotenv(stream=StringIO(dotenv_content))  # load from Hugging Face secret
@@ -36,8 +39,13 @@ def create_app():
     # Initialize extensions
     mongo.init_app(app)
     bcrypt.init_app(app)
+    init_s3(app)
+    
+    # Initialize Firebase
     if not firebase_admin._apps:
         firebase_admin.initialize_app(cred)
+        
+    # Enable CORS    
     CORS(app, supports_credentials=True)
     
     # Register Blueprints - Import inside function to avoid circular imports

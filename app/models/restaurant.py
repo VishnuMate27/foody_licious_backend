@@ -1,5 +1,5 @@
 from flask import current_app
-from app.routes import mongo
+from app import mongo
 from app.utils.mongo_utils import flatten 
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt

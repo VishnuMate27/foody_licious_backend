@@ -3,6 +3,10 @@ from app.models.restaurant import Restaurant
 from app.utils.decorators import login_required, admin_required
 from firebase_admin import auth as firebase_auth
 from bson.objectid import ObjectId
+from werkzeug.utils import secure_filename
+from app.extensions import s3_client, S3_BUCKET, S3_REGION
+from botocore.exceptions import NoCredentialsError, ClientError
+import uuid
 
 restaurant_bp = Blueprint('restaurants', __name__)
 
@@ -191,9 +195,61 @@ def deactivate_account():
     except Exception as e:
         return jsonify({"error": "Failed to deactivate account", "details": str(e)}), 500
 
+@restaurant_bp.route("/upload_restaurant_photo", methods=["POST"])
+def upload_restaurant_photo():
+    """
+    Upload an image file to a specific folder in an S3 bucket.
+    Example folder: uploads/restaurants/restaurant_Id
+    """
+    # Allowed extensions (optional)
+    ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+    def allowed_file(filename):
+        return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+    
+    if "image" not in request.files:
+        return jsonify({"error": "No image file found in request"}), 400
+
+    image = request.files["image"]
+    folder = request.form.get("folder", "uploads/")  # default folder
+    if image.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    if not allowed_file(image.filename):
+        return jsonify({"error": "Unsupported file type"}), 400
+
+    try:
+        # Secure and unique filename
+        filename = secure_filename(image.filename)
+        unique_filename = f"{uuid.uuid4().hex}_{filename}"
+
+        # Build the S3 object key (path inside bucket)
+        s3_key = f"{folder.rstrip('/')}/{unique_filename}"
+
+        # Upload to S3
+        s3_client.upload_fileobj(
+            image,
+            S3_BUCKET,
+            s3_key,
+            ExtraArgs={"ACL": "public-read", "ContentType": image.content_type}
+        )
+
+        # Generate the public URL
+        file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+
+        return jsonify({
+            "message": "Image uploaded successfully!",
+            "file_url": file_url,
+            "path_in_bucket": s3_key
+        }), 200
+
+    except (NoCredentialsError, ClientError) as e:
+        print(f"Error: {e}")
+        return jsonify({"error": "Upload failed, check server logs"}), 500    
+
 @restaurant_bp.route('/list', methods=['GET'])
 @admin_required
-def list_restaurants():
+def list_restaurants():     
     """List all restaurants (admin only)"""
     try:
         mongo = get_mongo()
