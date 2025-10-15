@@ -195,57 +195,101 @@ def deactivate_account():
     except Exception as e:
         return jsonify({"error": "Failed to deactivate account", "details": str(e)}), 500
 
-@restaurant_bp.route("/upload_restaurant_photo", methods=["POST"])
-def upload_restaurant_photo():
+@restaurant_bp.route("/upload_restaurant_profile_picture", methods=["POST"])
+def upload_restaurant_profile_picture():
     """
-    Upload an image file to a specific folder in an S3 bucket.
-    Example folder: uploads/restaurants/restaurant_Id
+    Upload or replace a restaurant's profile picture in S3.
+    Required: restaurant_id, image, folder
+    Optional: sub_folder
     """
-    # Allowed extensions (optional)
     ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 
     def allowed_file(filename):
         return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-    
+
+    # ---- Required field checks ----
     if "image" not in request.files:
-        return jsonify({"error": "No image file found in request"}), 400
+        return jsonify({"error": "Image file is required."}), 400
 
     image = request.files["image"]
-    folder = request.form.get("folder", "uploads/")  # default folder
-    if image.filename == "":
-        return jsonify({"error": "No selected file"}), 400
+    restaurant_id = request.form.get("restaurant_id")
+    folder = request.form.get("folder")
+    sub_folder = request.form.get("sub_folder", "").strip()
 
+    if not restaurant_id:
+        return jsonify({"error": "restaurant_id is required."}), 400
+    if not folder:
+        return jsonify({"error": "folder is required."}), 400
+    if image.filename == "":
+        return jsonify({"error": "No selected image file."}), 400
     if not allowed_file(image.filename):
-        return jsonify({"error": "Unsupported file type"}), 400
+        return jsonify({"error": "Unsupported file type."}), 400
 
     try:
-        # Secure and unique filename
+        # Secure filename
         filename = secure_filename(image.filename)
-        unique_filename = f"{uuid.uuid4().hex}_{filename}"
+        # ✅ Deterministic filename (same each time)
+        file_ext = filename.rsplit('.', 1)[1].lower()
+        filename = f"profile.{file_ext}"
 
-        # Build the S3 object key (path inside bucket)
-        s3_key = f"{folder.rstrip('/')}/{unique_filename}"
+        # ✅ Build consistent key
+        if sub_folder:
+            s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{filename}"
+        else:
+            s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{filename}"
 
-        # Upload to S3
+        # ✅ Check if file already exists, and delete if it does
+        try:
+            s3_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
+            s3_client.delete_object(Bucket=S3_BUCKET, Key=s3_key)
+            print(f"Deleted existing file: {s3_key}")
+        except ClientError as e:
+            # If not found (404), ignore
+            if e.response["Error"]["Code"] != "404":
+                raise e
+
+        # ✅ Upload new file (same key replaces old)
         s3_client.upload_fileobj(
             image,
             S3_BUCKET,
             s3_key,
-            ExtraArgs={"ACL": "public-read", "ContentType": image.content_type}
+            ExtraArgs={"ContentType": image.content_type}
         )
 
-        # Generate the public URL
+        # Generate public URL
         file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
 
+        # Update restaurant document
+        update_data = {"photoUrl": file_url}
+        success = Restaurant.update_restaurant(restaurant_id, update_data)
+        if not success:
+            return jsonify({"error": "Failed to update restaurant image URL."}), 501
+
+        # Fetch updated restaurant data
+        restaurant = Restaurant.find_by_id(restaurant_id)
+        restaurant_data = {
+            "id": restaurant["_id"],
+            "email": restaurant["email"],
+            "ownerName": restaurant["ownerName"],
+            "name": restaurant["name"],
+            "phone": restaurant["phone"],
+            "authProvider": restaurant["authProvider"],
+            "address": restaurant["address"],
+            "photoUrl": restaurant["photoUrl"],
+            "description": restaurant["description"],
+            "menuItems": restaurant["menuItems"],
+        }
+
         return jsonify({
-            "message": "Image uploaded successfully!",
+            "message": "Image uploaded successfully (old image replaced if existed).",
             "file_url": file_url,
-            "path_in_bucket": s3_key
+            "path_in_bucket": s3_key,
+            "restaurant": restaurant_data
         }), 200
 
     except (NoCredentialsError, ClientError) as e:
-        print(f"Error: {e}")
-        return jsonify({"error": "Upload failed, check server logs"}), 500    
+        print(f"S3 Upload Error: {e}")
+        return jsonify({"error": "Upload failed, please check server logs."}), 500
 
 @restaurant_bp.route('/list', methods=['GET'])
 @admin_required
