@@ -55,7 +55,7 @@ def update_profile():
             if field not in data or not data[field]:
                 return jsonify({"error": f"{field} is required"}), 400
                     
-        allowed_fields = ['name', 'email','phone', 'address']
+        allowed_fields = ['name', 'email','phone', 'address', 'description']
         update_data = {}
         
         for field in allowed_fields:
@@ -290,6 +290,78 @@ def upload_restaurant_profile_picture():
     except (NoCredentialsError, ClientError) as e:
         print(f"S3 Upload Error: {e}")
         return jsonify({"error": "Upload failed, please check server logs."}), 500
+
+@restaurant_bp.route("/remove_restaurant_profile_picture", methods=["DELETE"])
+def remove_restaurant_profile_picture():
+    """
+    Remove a restaurant's profile picture from S3 and clear its photoUrl in the database.
+    Required: restaurant_id, folder
+    Optional: sub_folder
+    """
+    restaurant_id = request.form.get("restaurant_id")
+    folder = request.form.get("folder")
+    sub_folder = request.form.get("sub_folder", "").strip()
+
+    if not restaurant_id:
+        return jsonify({"error": "restaurant_id is required."}), 400
+    if not folder:
+        return jsonify({"error": "folder is required."}), 400
+
+    try:
+        # Build the expected key for the profile picture
+        # Since you saved it as "profile.<ext>", we try to detect by checking extensions
+        extensions = ["png", "jpg", "jpeg", "gif", "webp"]
+        deleted = False
+
+        for ext in extensions:
+            if sub_folder:
+                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/profile.{ext}"
+            else:
+                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/profile.{ext}"
+
+            try:
+                s3_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
+                s3_client.delete_object(Bucket=S3_BUCKET, Key=s3_key)
+                print(f"Deleted file: {s3_key}")
+                deleted = True
+                break
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "404":
+                    raise e  # Some other S3 error, not "Not Found"
+
+        if not deleted:
+            return jsonify({"error": "No profile picture found to delete."}), 404
+
+        # Clear the restaurant's photoUrl in DB
+        update_data = {"photoUrl": ""}
+        success = Restaurant.update_restaurant(restaurant_id, update_data)
+        if not success:
+            return jsonify({"error": "Failed to update restaurant record."}), 501
+
+        # Fetch updated restaurant
+        restaurant = Restaurant.find_by_id(restaurant_id)
+        restaurant_data = {
+            "id": restaurant["_id"],
+            "email": restaurant["email"],
+            "ownerName": restaurant["ownerName"],
+            "name": restaurant["name"],
+            "phone": restaurant["phone"],
+            "authProvider": restaurant["authProvider"],
+            "address": restaurant["address"],
+            "photoUrl": restaurant["photoUrl"],
+            "description": restaurant["description"],
+            "menuItems": restaurant["menuItems"],
+        }
+
+        return jsonify({
+            "message": "Profile picture removed successfully.",
+            "deleted_from_s3": True,
+            "restaurant": restaurant_data
+        }), 200
+
+    except (NoCredentialsError, ClientError) as e:
+        print(f"S3 Deletion Error: {e}")
+        return jsonify({"error": "Failed to delete image from S3."}), 500
 
 @restaurant_bp.route('/list', methods=['GET'])
 @admin_required
