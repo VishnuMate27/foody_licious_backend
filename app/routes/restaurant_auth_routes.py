@@ -181,7 +181,7 @@ def verify_code_and_register_with_phone():
                 display_name=ownerName
             )
 
-            restaurant = Restaurant(fb_user.uid, None, ownerName, phone, authProvider)
+            restaurant = Restaurant(fb_user.uid, None, ownerName, phone, authProvider, None)
             saved_id = restaurant.save()
 
             return jsonify({
@@ -242,16 +242,20 @@ def login():
 
         # Fetch updated restaurant
         updated_restaurant = Restaurant.find_by_id(restaurant["_id"])
-
+        
         return jsonify({
             "message": "Login successful",
             "restaurant": {
                 "id": updated_restaurant["_id"],
                 "email": updated_restaurant["email"],
                 "ownerName": updated_restaurant["ownerName"],
+                "name": restaurant["name"],
                 "phone": updated_restaurant["phone"],
                 "authProvider": updated_restaurant["authProvider"],
                 "address": updated_restaurant["address"],
+                "photoUrl": restaurant["photoUrl"],
+                "description": restaurant["description"],
+                "menuItems": restaurant["menuItems"],
                 "last_login_at": updated_restaurant["last_login_at"].isoformat() + "Z"
             }
         }), 200
@@ -369,10 +373,15 @@ def verify_code_and_login_with_phone():
                 "restaurant": {
                     "id": restaurant["_id"],
                     "ownerName": restaurant["ownerName"],
+                    "name": restaurant["name"],
                     "email": restaurant["email"],
                     "phone": restaurant["phone"],
                     "authProvider": restaurant["authProvider"],
-                    "address": restaurant['address']
+                    "address": restaurant['address'],
+                    "photoUrl": restaurant["photoUrl"],
+                    "description": restaurant["description"],
+                    "menuItems": restaurant["menuItems"],
+                    "last_login_at": restaurant["last_login_at"].isoformat() + "Z"
                 }
             }), 200
 
