@@ -32,9 +32,9 @@ def get_profile():
             "email": restaurant['email'],
             "first_name": restaurant['first_name'],
             "last_name": restaurant['last_name'],
-            "role": restaurant.get('role', 'customer'),
+            "role": restaurant.get('role', 'restaurant'),
             "created_at": restaurant.get('created_at'),
-            "email_verified": restaurant.get('email_verified', False),
+            # "email_verified": restaurant.get('email_verified', False),
             "last_login": restaurant.get('last_login')
         }
         
