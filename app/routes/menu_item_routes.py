@@ -51,16 +51,16 @@ def add_new_Item():
     try:
         data = request.get_json()
         
-        required_fields = ['restaurant_id','name', 'description', 'price', 'image', 'ingredients']
+        required_fields = ['restaurant_id','name', 'description', 'price', 'ingredients']
         for field in required_fields:
             if field not in data or not data[field]:
+                print(f"{field}")
                 return jsonify({"error": f"{field} is required"}), 400    
             
         restaurantId = data['restaurant_id'].strip()
         name = data['name'].strip()
         description = data['description'].strip()
         price = data['price']
-        image = data['image'].strip()
         ingredients = data['ingredients']   
         
         # For checking the restaurant exists
@@ -73,7 +73,7 @@ def add_new_Item():
         if success:
             return jsonify({"error": "Invalid Request! Item already exists"}), 409  
         else:    
-            menuItem = MenuItem(restaurantId, name, description, price, image, ingredients)
+            menuItem = MenuItem(restaurantId, name, description, price, None, ingredients)
             saved_id = menuItem.save()  
             return jsonify({
                 "message": "Menu Item added successfully",
@@ -82,7 +82,6 @@ def add_new_Item():
                     "name": name,
                     "description": description,
                     "price": price,
-                    "image":image,
                     "ingredients":ingredients
                 }
             }), 201

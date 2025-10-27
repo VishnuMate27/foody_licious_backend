@@ -13,12 +13,12 @@ def get_bcrypt():
     return current_app.extensions['bcrypt']
 
 class MenuItem:
-    def __init__(self, restaurantId, name, description, price, image, ingredients):
+    def __init__(self, restaurantId, name, description, price, images, ingredients):
         self.restaurantId = restaurantId
         self.name = name
         self.description = description
         self.price = price
-        self.image = image
+        self.images = images
         self.availableQuantity = 0
         self.ingredients = ingredients
         self.created_at = datetime.utcnow()
@@ -31,7 +31,7 @@ class MenuItem:
             "name": self.name,
             "description": self.description,
             "price": self.price,
-            "image": self.image,
+            "images": self.images,
             "availableQuantity": self.availableQuantity,
             "ingredients": self.ingredients,
             "created_at": self.created_at,
