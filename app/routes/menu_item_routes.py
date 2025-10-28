@@ -230,4 +230,104 @@ def delete_item():
             "error": "Failed to delete item.",
             "details": str(e)
         }), 500
+
+@menu_item_bp.route("/upload_menu_item_images", methods=["POST"])
+def upload_menu_item_images():
+    """
+    Upload or replace up to 3 images for a menu item in S3.
+    Required: item_id, restaurant_id, folder
+    Optional: sub_folder
+    """
+    ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+    MAX_IMAGES = 3
+
+    def allowed_file(filename):
+        return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+    # --- Required field checks ---
+    if "images" not in request.files:
+        return jsonify({"error": "At least one image file is required."}), 400
+
+    images = request.files.getlist("images")
+    item_id = request.form.get("item_id")
+    restaurant_id = request.form.get("restaurant_id")
+    folder = request.form.get("folder")
+    sub_folder = request.form.get("sub_folder", "").strip()
+
+    if not item_id:
+        return jsonify({"error": "item_id is required."}), 400
+    if not restaurant_id:
+        return jsonify({"error": "restaurant_id is required."}), 400
+    if not folder:
+        return jsonify({"error": "folder is required."}), 400
+    if not images or len(images) == 0:
+        return jsonify({"error": "No images provided."}), 400
+    if len(images) > MAX_IMAGES:
+        return jsonify({"error": f"Maximum {MAX_IMAGES} images are allowed."}), 400
+
+    # Validate menu item existence
+    menu_item = MenuItem.find_item_by_id(item_id)
+    if not menu_item:
+        return jsonify({"error": "Menu item not found."}), 404
+
+    uploaded_urls = []
+
+    try:
+        for index, image in enumerate(images):
+            if image.filename == "":
+                return jsonify({"error": "One of the image files has no filename."}), 400
+            if not allowed_file(image.filename):
+                return jsonify({"error": f"Unsupported file type: {image.filename}"}), 400
+
+            # Secure and deterministic filename
+            filename = secure_filename(image.filename)
+            file_ext = filename.rsplit('.', 1)[1].lower()
+            filename = f"image_{index + 1}.{file_ext}"
+
+            # Build S3 key
+            if sub_folder:
+                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{item_id}/{filename}"
+            else:
+                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{item_id}/{filename}"
+
+            # Delete existing image if present (overwrite)
+            try:
+                s3_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
+                s3_client.delete_object(Bucket=S3_BUCKET, Key=s3_key)
+                print(f"Deleted old image: {s3_key}")
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "404":
+                    raise e
+
+            # Upload new file
+            s3_client.upload_fileobj(
+                image,
+                S3_BUCKET,
+                s3_key,
+                ExtraArgs={"ContentType": image.content_type}
+            )
+
+            # Build public URL
+            file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+            uploaded_urls.append(file_url)
+
+        # Update the menu item in MongoDB
+        update_data = {"images": uploaded_urls}
+        success = MenuItem.update_item(item_id, update_data)
+        if not success:
+            return jsonify({"error": "Failed to update menu item images."}), 501
+
+        # Fetch updated menu item
+        updated_item = MenuItem.find_item_by_id(item_id)
+        updated_item["_id"] = str(updated_item["_id"])  # Convert ObjectId to string for JSON
+
+        return jsonify({
+            "message": f"Uploaded {len(uploaded_urls)} image(s) successfully.",
+            "uploaded_urls": uploaded_urls,
+            "menuItem": updated_item
+        }), 200
+
+    except (NoCredentialsError, ClientError) as e:
+        print(f"S3 Upload Error: {e}")
+        return jsonify({"error": "Image upload failed. Please check server logs."}), 500
                        
