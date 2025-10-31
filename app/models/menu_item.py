@@ -6,6 +6,8 @@ from bson.objectid import ObjectId
 from datetime import datetime
 import re
 
+from app.utils.serializers import serialize_doc
+
 def get_momgo():
     return current_app.extensions['app']['default']
 
@@ -43,17 +45,20 @@ class MenuItem:
     @staticmethod
     def find_item_by_id(item_id):
         """Find item by item id"""
-        return mongo.db.menuItems.find_one({"_id": ObjectId(item_id)})
+        item = mongo.db.menuItems.find_one({"_id": ObjectId(item_id)})
+        return serialize_doc(item) if item else None
     
     @staticmethod
     def find_item_by_name(restaurant_id, name):
         """Find item by item id"""
-        return mongo.db.menuItems.find_one({"restaurantId": restaurant_id, "name": name})
+        item = mongo.db.menuItems.find_one({"restaurantId": restaurant_id, "name": name})
+        return serialize_doc(item) if item else None
         
     @staticmethod
     def find_items_by_restaurant_id(restaurant_id):
         """Find menuItems by restaurant Id"""
-        return mongo.db.menuItems.find({"restaurantId": restaurant_id})
+        items = list(mongo.db.menuItems.find({"restaurantId": restaurant_id}))
+        return serialize_doc(items)
     
     @staticmethod
     def update_item(item_id, update_data):

@@ -79,6 +79,7 @@ def add_new_Item():
                 "message": "Menu Item added successfully",
                 "menuItem": {
                     "id": saved_id,
+                    "restaurantId": restaurantId,
                     "name": name,
                     "description": description,
                     "price": price,
@@ -108,7 +109,7 @@ def increaseItemQuantity():
         newAvailableQuantity = item['availableQuantity'] + 1
         
         item_data = {
-            "_id": item['_id'],
+            "id": item['id'],
             "availableQuantity": newAvailableQuantity
         }
         
@@ -118,15 +119,10 @@ def increaseItemQuantity():
         
         # Get updated menuItem data
         updated_item = MenuItem.find_item_by_id(id)
-        upadted_item_data = {
-            "id": updated_item['_id'],
-            "restaurant_id": updated_item['restaurantId'],
-            "availableQuantity": updated_item['availableQuantity']
-        }
         
         return jsonify({
             "message": "Item quantity increased successfully",
-            "menuItems": upadted_item_data
+            "menuItem": updated_item
         }), 200
         
     except Exception as e:
@@ -155,7 +151,7 @@ def decreaseItemQuantity():
             return jsonify({"error": "Failed to decrease item quantity, Item quantity is already zero."}), 500
         
         item_data = {
-            "_id": item['_id'],
+            "id": item['id'],
             "availableQuantity": newAvailableQuantity
         }
         
@@ -165,16 +161,11 @@ def decreaseItemQuantity():
         
         # Get updated menuItem data
         updated_item = MenuItem.find_item_by_id(id)
-        upadted_item_data = {
-            "id": updated_item['_id'],
-            "restaurant_id": updated_item['restaurantId'],
-            "availableQuantity": updated_item['availableQuantity']
-        }
         
         return jsonify({
             "message": "Item quantity decreased successfully",
-            "restaurant": upadted_item_data
-        }), 200
+            "menuItem": updated_item
+        }), 200 
         
     except Exception as e:
         return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500        
