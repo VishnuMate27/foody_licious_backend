@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify, session, current_app
+from app.core.constansts import ALLOWED_IMAGE_EXTENSIONS, S3_FOLDER_MENU_ITEMS, S3_FOLDER_RESTAURANTS
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
+from app.utils.aws_utils import MAX_IMAGES, delete_s3_folder, upload_images_to_s3
 from app.utils.decorators import login_required, admin_required
 from firebase_admin import auth as firebase_auth
 from bson.objectid import ObjectId
@@ -87,7 +89,7 @@ def add_new_Item():
                 }
             }), 201
     except Exception as e:
-        return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500                                 
+        return jsonify({"error": "Failed to add new item", "details": str(e)}), 500                                 
 
 @menu_item_bp.route('/increaseItemQuantity', methods=['PUT'])
 def increaseItemQuantity():
@@ -175,6 +177,7 @@ def delete_item():
     """Delete menu item either by (restaurant_id + name) or by item id."""
     try:
         data = request.get_json()
+        restaurant_id = request.args.get('restaurant_id')
         # Case 1: Delete using restaurant_id + name
         if 'restaurant_id' in data and 'name' in data and data['restaurant_id'] and data['name']:
             restaurant_id = data['restaurant_id'].strip()
@@ -200,10 +203,20 @@ def delete_item():
         elif 'id' in data and data['id']:
             item_id = data['id'].strip()
 
-            menu_item = MenuItem.find_by_id(item_id)
+            menu_item = MenuItem.find_item_by_id(item_id)
             if not menu_item:
                 return jsonify({"error": "Item does not exist!"}), 404
-
+            
+            try:
+                restaurant_id = menu_item['restaurantId']
+                folder = S3_FOLDER_RESTAURANTS
+                sub_folder = S3_FOLDER_MENU_ITEMS
+                item_id = menu_item['id']
+                delete_s3_folder(s3_client, S3_BUCKET, f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{item_id}/")
+            except (NoCredentialsError, ClientError) as e:
+                print(f"S3 Deletion Error: {e}")
+                return jsonify({"error": "Failed to delete image from S3."}), 500
+            
             MenuItem.delete_item(item_id)
             return jsonify({
                 "message": "Item deleted successfully using item id",
@@ -229,88 +242,49 @@ def upload_menu_item_images():
     Required: item_id, restaurant_id, folder
     Optional: sub_folder
     """
-    ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
-    MAX_IMAGES = 3
-
-    def allowed_file(filename):
-        return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-    # --- Required field checks ---
-    if "images" not in request.files:
-        return jsonify({"error": "At least one image file is required."}), 400
-
-    images = request.files.getlist("images")
-    item_id = request.form.get("item_id")
-    restaurant_id = request.form.get("restaurant_id")
-    folder = request.form.get("folder")
-    sub_folder = request.form.get("sub_folder", "").strip()
-
-    if not item_id:
-        return jsonify({"error": "item_id is required."}), 400
-    if not restaurant_id:
-        return jsonify({"error": "restaurant_id is required."}), 400
-    if not folder:
-        return jsonify({"error": "folder is required."}), 400
-    if not images or len(images) == 0:
-        return jsonify({"error": "No images provided."}), 400
-    if len(images) > MAX_IMAGES:
-        return jsonify({"error": f"Maximum {MAX_IMAGES} images are allowed."}), 400
-
-    # Validate menu item existence
-    menu_item = MenuItem.find_item_by_id(item_id)
-    if not menu_item:
-        return jsonify({"error": "Menu item not found."}), 404
-
-    uploaded_urls = []
-
     try:
-        for index, image in enumerate(images):
-            if image.filename == "":
-                return jsonify({"error": "One of the image files has no filename."}), 400
-            if not allowed_file(image.filename):
-                return jsonify({"error": f"Unsupported file type: {image.filename}"}), 400
+        # --- Required field checks ---
+        if "images" not in request.files:
+            return jsonify({"error": "At least one image file is required."}), 400
 
-            # Secure and deterministic filename
-            filename = secure_filename(image.filename)
-            file_ext = filename.rsplit('.', 1)[1].lower()
-            filename = f"image_{index + 1}.{file_ext}"
+        images = request.files.getlist("images")
+        item_id = request.form.get("item_id")
+        restaurant_id = request.form.get("restaurant_id")
+        folder = request.form.get("folder")
+        sub_folder = request.form.get("sub_folder", "").strip()
 
-            # Build S3 key
-            if sub_folder:
-                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{item_id}/{filename}"
-            else:
-                s3_key = f"{folder.rstrip('/')}/{restaurant_id}/{item_id}/{filename}"
+        if not item_id:
+            return jsonify({"error": "item_id is required."}), 400
+        if not restaurant_id:
+            return jsonify({"error": "restaurant_id is required."}), 400
+        if not folder:
+            return jsonify({"error": "folder is required."}), 400
+        if not images or len(images) == 0:
+            return jsonify({"error": "No images provided."}), 400
+        if len(images) > MAX_IMAGES:
+            return jsonify({"error": f"Maximum {MAX_IMAGES} images are allowed."}), 400
 
-            # Delete existing image if present (overwrite)
-            try:
-                s3_client.head_object(Bucket=S3_BUCKET, Key=s3_key)
-                s3_client.delete_object(Bucket=S3_BUCKET, Key=s3_key)
-                print(f"Deleted old image: {s3_key}")
-            except ClientError as e:
-                if e.response["Error"]["Code"] != "404":
-                    raise e
+        # Validate menu item existence
+        menu_item = MenuItem.find_item_by_id(item_id)
+        if not menu_item:
+            return jsonify({"error": "Menu item not found."}), 404
+        
+        uploaded_urls, error = upload_images_to_s3(
+            s3_client=s3_client,
+            bucket_name=S3_BUCKET,
+            region=S3_REGION,
+            images=images,
+            restaurant_id=restaurant_id,
+            folder=folder,
+            item_id=item_id,
+            sub_folder=sub_folder
+        )
 
-            # Upload new file
-            s3_client.upload_fileobj(
-                image,
-                S3_BUCKET,
-                s3_key,
-                ExtraArgs={"ContentType": image.content_type}
-            )
-
-            # Build public URL
-            file_url = f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
-            uploaded_urls.append(file_url)
-
-        # Update the menu item in MongoDB
-        update_data = {"images": uploaded_urls}
-        success = MenuItem.update_item(item_id, update_data)
-        if not success:
-            return jsonify({"error": "Failed to update menu item images."}), 501
-
+        if error:
+            return jsonify({"error": error}), 400
+        
         # Fetch updated menu item
-        updated_item = MenuItem.find_item_by_id(item_id)
-        updated_item["_id"] = str(updated_item["_id"])  # Convert ObjectId to string for JSON
+        updated_item = MenuItem.find_item_by_id(item_id) # Convert ObjectId to string for JSON
 
         return jsonify({
             "message": f"Uploaded {len(uploaded_urls)} image(s) successfully.",
@@ -322,3 +296,87 @@ def upload_menu_item_images():
         print(f"S3 Upload Error: {e}")
         return jsonify({"error": "Image upload failed. Please check server logs."}), 500
                        
+@menu_item_bp.route('/updateItem', methods=['PUT'])
+def updateItem():
+    """Update Sepecific Items in Menu"""
+    try:
+        data = request.get_json()
+        
+        #image folder and sub_folder name 
+        folder = request.form.get("folder")
+        sub_folder = request.form.get("sub_folder", "").strip()
+        
+        required_fields = ['id']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({"error": f"{field} is required"}), 400
+        
+        allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'images', 'ingredients']
+        update_data = {}
+        
+        for field in allowed_fields:
+            if field in data and data[field]:
+                update_data[field] = data[field]
+        
+        id = data['id']
+                
+        # Get available quantity of items
+        item = MenuItem.find_item_by_id(id)
+        
+        existingImagesList = item['images']
+        
+        newImagesList = data['images']
+        
+        # Find images which exists in newImagesList but not exist in existingImagesList
+        #example
+        # newImagesList = ['remote_img1', 'local_img1','local_img2']
+        # existingImagesList = ['remote_img1', 'remote_img2']
+        # i.e imagesToUpload = newImagesList - existingImagesList = ['local_img1','local_img2']
+        # imagesToDeleteFromMongoDBAndStorage = existingImagesList - newImagesList = ['remote_img2']
+        
+        imagesToUpload = [item for item in newImagesList if item not in existingImagesList]
+        
+        imagesToDeleteFromMongoDBAndStorage = [item for item in existingImagesList if item not in newImagesList]
+        
+        # Add Code For Deleting images from MongoDB and Storage
+        # TODO: Write fuction for above
+        
+        # Add Code For Uploading images to Storage and Add it to MongoDB
+        uploaded_urls, error = upload_images_to_s3(
+            s3_client=s3_client,
+            bucket_name=S3_BUCKET,
+            region=S3_REGION,
+            images=imagesToUpload,
+            restaurant_id=item['restaurantId'],
+            folder=folder,
+            item_id=id,
+            sub_folder=sub_folder
+        )
+
+        if error:
+            return jsonify({"error": error}), 400    
+        
+        # Common images in lists newImagesList & existingImagesList
+        common_images_in_list = [element for element in newImagesList if element in existingImagesList]
+        
+        # Final image list = uploaded_urls + common_images_in_list = ['remote_img1]
+        finalImageList = uploaded_urls.append(common_images_in_list)   
+                
+        update_data['images'] = finalImageList
+               
+        # Update restaurant
+        success = MenuItem.update_item(id, update_data)  
+        if not success:
+            return jsonify({"error": "Failed to update item"}), 500
+        
+        # Get updated menuItem data
+        updated_item = MenuItem.find_item_by_id(id)
+        
+        return jsonify({
+            "message": "Item updated successfully",
+            "menuItem": updated_item
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": "Failed to update item.", "details": str(e)}), 500     
+                            
