@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 from botocore.exceptions import ClientError, NoCredentialsError
 
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+MAX_IMAGES = 3
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -60,7 +61,6 @@ def upload_images_to_s3(s3_client, bucket_name, region, images, restaurant_id, f
     except (NoCredentialsError, ClientError) as e:
         print(f"S3 Upload Error: {e}")
         return None, "Image upload failed. Please check server logs."
-
 
 def delete_s3_folder(s3_client, bucket_name: str, folder_prefix: str) -> dict:
     """
@@ -123,3 +123,60 @@ def delete_s3_folder(s3_client, bucket_name: str, folder_prefix: str) -> dict:
             "error_count": 1,
             "errors": [str(e)],
         }
+        
+def delete_images_from_s3(image_urls: list[str], bucket_name: str, s3_client=None) -> dict:
+    """
+    Deletes multiple images from AWS S3 using their image URLs.
+
+    Args:
+        image_urls (list[str]): List of image URLs to delete.
+        bucket_name (str): Name of the S3 bucket.
+        s3_client (boto3.client, optional): Reusable S3 client. If not provided, a new one is created.
+
+    Returns:
+        dict: {
+            "deleted": [list of deleted keys],
+            "errors": [list of error messages]
+        }
+    """
+    if not image_urls:
+        return {"deleted": [], "errors": ["No image URLs provided."]}
+
+    if not s3_client:
+        s3_client = boto3.client('s3')
+
+    deleted_keys = []
+    errors = []
+
+    try:
+        # Convert URLs to object keys
+        keys_to_delete = []
+        for url in image_urls:
+            try:
+                parsed = urlparse(url)
+                key = parsed.path.lstrip('/')
+                keys_to_delete.append({'Key': key})
+            except Exception as e:
+                errors.append(f"Invalid URL {url}: {e}")
+
+        # Perform deletion in batches of 1000
+        for i in range(0, len(keys_to_delete), 1000):
+            batch = keys_to_delete[i:i+1000]
+            response = s3_client.delete_objects(
+                Bucket=bucket_name,
+                Delete={'Objects': batch}
+            )
+
+            # Collect successfully deleted keys
+            if 'Deleted' in response:
+                deleted_keys.extend([obj['Key'] for obj in response['Deleted']])
+
+            # Collect errors if any
+            if 'Errors' in response:
+                for err in response['Errors']:
+                    errors.append(f"{err['Key']}: {err.get('Message', 'Unknown error')}")
+
+    except Exception as e:
+        errors.append(str(e))
+
+    return {"deleted": deleted_keys, "errors": errors}        

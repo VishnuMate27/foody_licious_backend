@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, session, current_app
 from app.core.constansts import ALLOWED_IMAGE_EXTENSIONS, S3_FOLDER_MENU_ITEMS, S3_FOLDER_RESTAURANTS
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
-from app.utils.aws_utils import MAX_IMAGES, delete_s3_folder, upload_images_to_s3
+from app.utils.aws_utils import MAX_IMAGES, delete_images_from_s3, delete_s3_folder, upload_images_to_s3
 from app.utils.decorators import login_required, admin_required
 from firebase_admin import auth as firebase_auth
 from bson.objectid import ObjectId
@@ -340,6 +340,7 @@ def updateItem():
         
         # Add Code For Deleting images from MongoDB and Storage
         # TODO: Write fuction for above
+        delete_images_from_s3(imagesToDeleteFromMongoDBAndStorage, S3_BUCKET, s3_client)
         
         # Add Code For Uploading images to Storage and Add it to MongoDB
         uploaded_urls, error = upload_images_to_s3(

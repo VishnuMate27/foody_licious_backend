@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session, current_app
 from app.models.restaurant import Restaurant
+from app.utils.aws_utils import delete_images_from_s3
 from app.utils.decorators import login_required, admin_required
 from firebase_admin import auth as firebase_auth
 from bson.objectid import ObjectId
@@ -103,7 +104,7 @@ def delete_restaurant():
                 return jsonify({"error": f"{field} is required"}), 400
             
         id = data['id'] # same for Firebase and MongoDB   
-
+        ## TODO: Add Function for Deleting Restaurant Storage Folder from AWS        
         # --- Step 1: Backup MongoDB restaurant document (for rollback if needed) ---
         restaurant_doc = Restaurant.find_by_id(id)
 
