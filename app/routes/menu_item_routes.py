@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, json, request, jsonify, session, current_app
 from app.core.constansts import ALLOWED_IMAGE_EXTENSIONS, S3_FOLDER_MENU_ITEMS, S3_FOLDER_RESTAURANTS
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
@@ -296,88 +296,180 @@ def upload_menu_item_images():
         print(f"S3 Upload Error: {e}")
         return jsonify({"error": "Image upload failed. Please check server logs."}), 500
                        
-@menu_item_bp.route('/updateItem', methods=['PUT'])
-def updateItem():
-    """Update Sepecific Items in Menu"""
-    try:
-        data = request.get_json()
+# @menu_item_bp.route('/updateItem', methods=['PUT'])
+# def updateItem():
+#     """Update Sepecific Items in Menu"""
+#     try:
+#         data = request.get_json()
         
-        #image folder and sub_folder name 
-        folder = request.form.get("folder")
-        sub_folder = request.form.get("sub_folder", "").strip()
+#         #image folder and sub_folder name 
+#         folder = request.form.get("folder")
+#         sub_folder = request.form.get("sub_folder", "").strip()
         
-        required_fields = ['id']
-        for field in required_fields:
-            if field not in data or not data[field]:
-                return jsonify({"error": f"{field} is required"}), 400
+#         required_fields = ['id']
+#         for field in required_fields:
+#             if field not in data or not data[field]:
+#                 return jsonify({"error": f"{field} is required"}), 400
         
-        allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'images', 'ingredients']
-        update_data = {}
+#         allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'images', 'ingredients']
+#         update_data = {}
         
-        for field in allowed_fields:
-            if field in data and data[field]:
-                update_data[field] = data[field]
+#         for field in allowed_fields:
+#             if field in data and data[field]:
+#                 update_data[field] = data[field]
         
-        id = data['id']
+#         id = data['id']
                 
-        # Get available quantity of items
-        item = MenuItem.find_item_by_id(id)
+#         # Get available quantity of items
+#         item = MenuItem.find_item_by_id(id)
         
-        existingImagesList = item['images']
+#         existingImagesList = item['images']
         
-        newImagesList = data['images']
+#         newImagesList = data['images']
         
-        # Find images which exists in newImagesList but not exist in existingImagesList
-        #example
-        # newImagesList = ['remote_img1', 'local_img1','local_img2']
-        # existingImagesList = ['remote_img1', 'remote_img2']
-        # i.e imagesToUpload = newImagesList - existingImagesList = ['local_img1','local_img2']
-        # imagesToDeleteFromMongoDBAndStorage = existingImagesList - newImagesList = ['remote_img2']
+#         # Find images which exists in newImagesList but not exist in existingImagesList
+#         #example
+#         # newImagesList = ['remote_img1', 'local_img1','local_img2']
+#         # existingImagesList = ['remote_img1', 'remote_img2']
+#         # i.e imagesToUpload = newImagesList - existingImagesList = ['local_img1','local_img2']
+#         # imagesToDeleteFromMongoDBAndStorage = existingImagesList - newImagesList = ['remote_img2']
         
-        imagesToUpload = [item for item in newImagesList if item not in existingImagesList]
+#         imagesToUpload = [item for item in newImagesList if item not in existingImagesList]
         
-        imagesToDeleteFromMongoDBAndStorage = [item for item in existingImagesList if item not in newImagesList]
+#         imagesToDeleteFromMongoDBAndStorage = [item for item in existingImagesList if item not in newImagesList]
         
-        # Add Code For Deleting images from MongoDB and Storage
-        # TODO: Write fuction for above
-        delete_images_from_s3(imagesToDeleteFromMongoDBAndStorage, S3_BUCKET, s3_client)
+#         # Add Code For Deleting images from MongoDB and Storage
+#         # TODO: Write fuction for above
+#         delete_images_from_s3(imagesToDeleteFromMongoDBAndStorage, S3_BUCKET, s3_client)
         
-        # Add Code For Uploading images to Storage and Add it to MongoDB
-        uploaded_urls, error = upload_images_to_s3(
-            s3_client=s3_client,
-            bucket_name=S3_BUCKET,
-            region=S3_REGION,
-            images=imagesToUpload,
-            restaurant_id=item['restaurantId'],
-            folder=folder,
-            item_id=id,
-            sub_folder=sub_folder
-        )
+#         # Add Code For Uploading images to Storage and Add it to MongoDB
+#         uploaded_urls, error = upload_images_to_s3(
+#             s3_client=s3_client,
+#             bucket_name=S3_BUCKET,
+#             region=S3_REGION,
+#             images=imagesToUpload,
+#             restaurant_id=item['restaurantId'],
+#             folder=folder,
+#             item_id=id,
+#             sub_folder=sub_folder
+#         )
 
-        if error:
-            return jsonify({"error": error}), 400    
+#         if error:
+#             return jsonify({"error": error}), 400    
         
-        # Common images in lists newImagesList & existingImagesList
-        common_images_in_list = [element for element in newImagesList if element in existingImagesList]
+#         # Common images in lists newImagesList & existingImagesList
+#         common_images_in_list = [element for element in newImagesList if element in existingImagesList]
         
-        # Final image list = uploaded_urls + common_images_in_list = ['remote_img1]
-        finalImageList = uploaded_urls.append(common_images_in_list)   
+#         # Final image list = uploaded_urls + common_images_in_list = ['remote_img1]
+#         finalImageList = uploaded_urls.append(common_images_in_list)   
                 
-        update_data['images'] = finalImageList
+#         update_data['images'] = finalImageList
                
-        # Update restaurant
-        success = MenuItem.update_item(id, update_data)  
+#         # Update restaurant
+#         success = MenuItem.update_item(id, update_data)  
+#         if not success:
+#             return jsonify({"error": "Failed to update item"}), 500
+        
+#         # Get updated menuItem data
+#         updated_item = MenuItem.find_item_by_id(id)
+        
+#         return jsonify({
+#             "message": "Item updated successfully",
+#             "menuItem": updated_item
+#         }), 200
+        
+#     except Exception as e:
+#         return jsonify({"error": "Failed to update item.", "details": str(e)}), 500     
+                            
+@menu_item_bp.route('/updateItem', methods=['PUT'])
+def update_item():
+    """Update specific menu item"""
+    try:
+        # Since Flutter sends multipart/form-data, use request.form instead of request.get_json()
+        form = request.form
+        files = request.files
+
+        # Required fields
+        item_id = form.get('id')
+        if not item_id:
+            return jsonify({"error": "id is required"}), 400
+
+        folder = form.get("folder", "").strip()
+        sub_folder = form.get("sub_folder", "").strip()
+
+        # Collect allowed fields
+        allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'ingredients']
+        update_data = {}
+
+        for field in allowed_fields:
+            value = form.get(field)
+            if value:
+                update_data[field] = value
+
+        # 🔍 Get the existing item from DB
+        item = MenuItem.find_item_by_id(item_id)
+        if not item:
+            return jsonify({"error": "Item not found"}), 404
+
+        existing_images = item.get('images', [])
+
+        # 🖼️ Handle image uploads
+        uploaded_urls = []
+        error = None
+
+        # Get existing images from frontend
+        existing_images_from_client = []
+        if 'images' in form:
+            try:
+                existing_images_from_client = json.loads(form['images'])
+            except Exception as e:
+                return jsonify({"error": "Invalid format for images", "details": str(e)}), 400
+
+        # Identify files to upload (those sent in `request.files`)
+        new_images_to_upload = list(files.keys())
+
+        # Upload new images to S3
+        if new_images_to_upload:
+            uploaded_urls, error = upload_images_to_s3(
+                s3_client=s3_client,
+                bucket_name=S3_BUCKET,
+                region=S3_REGION,
+                images=[files[key] for key in new_images_to_upload],
+                restaurant_id=item['restaurantId'],
+                folder=folder,
+                item_id=item_id,
+                sub_folder=sub_folder
+            )
+
+            if error:
+                return jsonify({"error": error}), 400
+
+        # 🧮 Calculate images to delete (those that existed before but not in new list)
+        images_to_delete = [img for img in existing_images if img not in existing_images_from_client]
+
+        if images_to_delete:
+            delete_images_from_s3(images_to_delete, S3_BUCKET, s3_client)
+
+        # ✅ Final image list = old ones retained + newly uploaded
+        final_image_list = existing_images_from_client + uploaded_urls
+        update_data['images'] = final_image_list
+
+        # 💾 Update item in MongoDB
+        success = MenuItem.update_item(item_id, update_data)
         if not success:
             return jsonify({"error": "Failed to update item"}), 500
-        
-        # Get updated menuItem data
-        updated_item = MenuItem.find_item_by_id(id)
-        
+
+        # ✅ Fetch updated item to return
+        updated_item = MenuItem.find_item_by_id(item_id)
+
         return jsonify({
             "message": "Item updated successfully",
             "menuItem": updated_item
         }), 200
-        
+
     except Exception as e:
-        return jsonify({"error": "Failed to update item.", "details": str(e)}), 500     
+        return jsonify({
+            "error": "Failed to update item.",
+            "details": str(e)
+        }), 500
                             
