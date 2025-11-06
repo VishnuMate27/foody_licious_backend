@@ -395,46 +395,62 @@ def update_item():
             return jsonify({"error": "id is required"}), 400
 
         folder = form.get("folder", "").strip()
-        sub_folder = form.get("sub_folder", "").strip()
+        sub_folder = form.get("sub_folder", item_id).strip()
 
         # Collect allowed fields
         allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'ingredients']
-        update_data = {}
-
-        for field in allowed_fields:
-            value = form.get(field)
-            if value:
-                update_data[field] = value
+        update_data = normalize_menu_item_data(form, allowed_fields)
 
         # 🔍 Get the existing item from DB
         item = MenuItem.find_item_by_id(item_id)
         if not item:
             return jsonify({"error": "Item not found"}), 404
 
-        existing_images = item.get('images', [])
+        # Step 1
+        fetched_list_from_mongodb = item.get('images', [])
 
         # 🖼️ Handle image uploads
         uploaded_urls = []
         error = None
 
         # Get existing images from frontend
-        existing_images_from_client = []
+        existing_remote_images_from_client = []
         if 'images' in form:
             try:
-                existing_images_from_client = json.loads(form['images'])
+                existing_remote_images_from_client = json.loads(form['images'])
             except Exception as e:
                 return jsonify({"error": "Invalid format for images", "details": str(e)}), 400
 
+        # Step 2
+        # images_to_delete = fetched_list_from_mongodb - existing_remote_images_from_client
+        images_to_delete = [img for img in fetched_list_from_mongodb if img not in existing_remote_images_from_client]
+
+        # Step 3
+        if images_to_delete:
+            delete_images_from_s3(images_to_delete, s3_client)
+        
+        # update_data['images'] = fetched_list_from_mongodb - images_to_delete
+        update_data['images'] = [img for img in fetched_list_from_mongodb if img not in images_to_delete]
+            
+        success = MenuItem.update_item(item_id, update_data)
+        if not success:
+            return jsonify({"error": "Failed to update item"}), 500
+        
+        # Step 4
+        updated_item = MenuItem.find_item_by_id(item_id)
+        
+        current_images = updated_item.get('images', [])
+        
         # Identify files to upload (those sent in `request.files`)
-        new_images_to_upload = list(files.keys())
+        new_images_to_upload = files.getlist("images")
 
         # Upload new images to S3
         if new_images_to_upload:
-            uploaded_urls, error = upload_images_to_s3(
+            uploaded_urls, existing_urls, error = upload_images_to_s3(
                 s3_client=s3_client,
                 bucket_name=S3_BUCKET,
                 region=S3_REGION,
-                images=[files[key] for key in new_images_to_upload],
+                images=new_images_to_upload,
                 restaurant_id=item['restaurantId'],
                 folder=folder,
                 item_id=item_id,
@@ -442,19 +458,13 @@ def update_item():
             )
 
             if error:
-                return jsonify({"error": error}), 400
+                return jsonify({"error": error}), 400 
 
-        # 🧮 Calculate images to delete (those that existed before but not in new list)
-        images_to_delete = [img for img in existing_images if img not in existing_images_from_client]
-
-        if images_to_delete:
-            delete_images_from_s3(images_to_delete, S3_BUCKET, s3_client)
-
-        # ✅ Final image list = old ones retained + newly uploaded
-        final_image_list = existing_images_from_client + uploaded_urls
+        # Step 5
+        final_image_list = current_images + uploaded_urls
         update_data['images'] = final_image_list
 
-        # 💾 Update item in MongoDB
+        # Step 6
         success = MenuItem.update_item(item_id, update_data)
         if not success:
             return jsonify({"error": "Failed to update item"}), 500
@@ -472,4 +482,26 @@ def update_item():
             "error": "Failed to update item.",
             "details": str(e)
         }), 500
+                                                       
+def normalize_menu_item_data(form, allowed_fields):
+    import json
+    data = {k: form.get(k) for k in allowed_fields if form.get(k) is not None}
+
+    def safe_int(key):
+        try:
+            data[key] = int(data[key])
+        except (ValueError, TypeError):
+            data.pop(key, None)
+
+    if 'price' in data: safe_int('price')
+    if 'availableQuantity' in data: safe_int('availableQuantity')
+
+    if 'ingredients' in data:
+        try:
+            ingredients = json.loads(data['ingredients'])
+            data['ingredients'] = [str(i) for i in ingredients] if isinstance(ingredients, list) else [str(ingredients)]
+        except (json.JSONDecodeError, TypeError):
+            data.pop('ingredients', None)
+
+    return data
                             
