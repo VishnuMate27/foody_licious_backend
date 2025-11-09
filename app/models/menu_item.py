@@ -55,9 +55,36 @@ class MenuItem:
         return serialize_doc(item) if item else None
         
     @staticmethod
-    def find_items_by_restaurant_id(restaurant_id):
-        """Find menuItems by restaurant Id"""
-        items = list(mongo.db.menuItems.find({"restaurantId": restaurant_id}))
+    def find_items_by_restaurant_id(restaurant_id, skip=None, limit=None, count_only=False):
+        """
+        Find menuItems by restaurant Id with pagination support
+        Args:
+            restaurant_id: ID of the restaurant
+            skip: Number of documents to skip (for pagination)
+            limit: Maximum number of documents to return (for pagination)
+            count_only: If True, returns only the count of documents
+        Returns:
+            If count_only is True: returns the total count
+            If count_only is False: returns the paginated items
+        """
+        query = {"restaurantId": restaurant_id}
+        
+        if count_only:
+            return mongo.db.menuItems.count_documents(query)
+            
+        # Create the base cursor
+        cursor = mongo.db.menuItems.find(query)
+        
+        # Apply pagination if specified
+        if skip is not None:
+            cursor = cursor.skip(skip)
+        if limit is not None:
+            cursor = cursor.limit(limit)
+            
+        # Add sorting by creation date (newest first)
+        cursor = cursor.sort("created_at", -1)
+            
+        items = list(cursor)
         return serialize_doc(items)
     
     @staticmethod

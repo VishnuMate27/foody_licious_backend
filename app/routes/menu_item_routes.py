@@ -20,10 +20,21 @@ def get_bcrypt():
 
 @menu_item_bp.route('/allMenuItems', methods=['GET'])
 def get_all_menu_items():
-    """Get all menu items"""
+    """Get all menu items with pagination support"""
     try:
         # Get restaurant_id from query params
         restaurant_id = request.args.get('restaurant_id')
+        # Get pagination parameters with defaults
+        page = int(request.args.get('page', 1))
+        page_size = int(request.args.get('page_size', 10))
+
+        # Validate pagination parameters
+        if page < 1:
+            return jsonify({"error": "Page number must be greater than 0"}), 400
+        if page_size < 1:
+            return jsonify({"error": "Page size must be greater than 0"}), 400
+        if page_size > 100:  # Limit maximum page size
+            return jsonify({"error": "Page size cannot exceed 100"}), 400
 
         if not restaurant_id:
             return jsonify({"error": "restaurant_id is required"}), 400
@@ -32,13 +43,28 @@ def get_all_menu_items():
         if not restaurant:
             return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 404
 
-        menuItems = MenuItem.find_items_by_restaurant_id(restaurant_id)
-        if not menuItems:
+        # Get total count of menu items
+        total_count = MenuItem.find_items_by_restaurant_id(restaurant_id, count_only=True)
+        if total_count == 0:
             return jsonify({"error": "MenuItems not found"}), 404
+            
+        total_pages = (total_count + page_size - 1) // page_size
+
+        # Calculate skip and limit for pagination
+        skip = (page - 1) * page_size
+        menuItems = MenuItem.find_items_by_restaurant_id(restaurant_id, skip=skip, limit=page_size)
 
         return jsonify({
-            "message": "Fetched all menu items",
-            "menuItems": menuItems
+            "message": "Fetched menu items successfully",
+            "menuItems": menuItems,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
         }), 200
 
     except Exception as e:
@@ -269,7 +295,9 @@ def upload_menu_item_images():
         if not menu_item:
             return jsonify({"error": "Menu item not found."}), 404
         
-        uploaded_urls, error = upload_images_to_s3(
+        update_data = {}
+        
+        uploaded_urls, existing_urls, error = upload_images_to_s3(
             s3_client=s3_client,
             bucket_name=S3_BUCKET,
             region=S3_REGION,
@@ -278,10 +306,17 @@ def upload_menu_item_images():
             folder=folder,
             item_id=item_id,
             sub_folder=sub_folder
-        )
+        )        
 
         if error:
             return jsonify({"error": error}), 400
+        
+        update_data['images'] = uploaded_urls
+        
+        success = MenuItem.update_item(item_id, update_data)
+        
+        if not success:
+            return jsonify({"error": "Failed to update item"}), 500
         
         # Fetch updated menu item
         updated_item = MenuItem.find_item_by_id(item_id) # Convert ObjectId to string for JSON
@@ -295,92 +330,7 @@ def upload_menu_item_images():
     except (NoCredentialsError, ClientError) as e:
         print(f"S3 Upload Error: {e}")
         return jsonify({"error": "Image upload failed. Please check server logs."}), 500
-                       
-# @menu_item_bp.route('/updateItem', methods=['PUT'])
-# def updateItem():
-#     """Update Sepecific Items in Menu"""
-#     try:
-#         data = request.get_json()
-        
-#         #image folder and sub_folder name 
-#         folder = request.form.get("folder")
-#         sub_folder = request.form.get("sub_folder", "").strip()
-        
-#         required_fields = ['id']
-#         for field in required_fields:
-#             if field not in data or not data[field]:
-#                 return jsonify({"error": f"{field} is required"}), 400
-        
-#         allowed_fields = ['name', 'description', 'price', 'availableQuantity', 'images', 'ingredients']
-#         update_data = {}
-        
-#         for field in allowed_fields:
-#             if field in data and data[field]:
-#                 update_data[field] = data[field]
-        
-#         id = data['id']
-                
-#         # Get available quantity of items
-#         item = MenuItem.find_item_by_id(id)
-        
-#         existingImagesList = item['images']
-        
-#         newImagesList = data['images']
-        
-#         # Find images which exists in newImagesList but not exist in existingImagesList
-#         #example
-#         # newImagesList = ['remote_img1', 'local_img1','local_img2']
-#         # existingImagesList = ['remote_img1', 'remote_img2']
-#         # i.e imagesToUpload = newImagesList - existingImagesList = ['local_img1','local_img2']
-#         # imagesToDeleteFromMongoDBAndStorage = existingImagesList - newImagesList = ['remote_img2']
-        
-#         imagesToUpload = [item for item in newImagesList if item not in existingImagesList]
-        
-#         imagesToDeleteFromMongoDBAndStorage = [item for item in existingImagesList if item not in newImagesList]
-        
-#         # Add Code For Deleting images from MongoDB and Storage
-#         # TODO: Write fuction for above
-#         delete_images_from_s3(imagesToDeleteFromMongoDBAndStorage, S3_BUCKET, s3_client)
-        
-#         # Add Code For Uploading images to Storage and Add it to MongoDB
-#         uploaded_urls, error = upload_images_to_s3(
-#             s3_client=s3_client,
-#             bucket_name=S3_BUCKET,
-#             region=S3_REGION,
-#             images=imagesToUpload,
-#             restaurant_id=item['restaurantId'],
-#             folder=folder,
-#             item_id=id,
-#             sub_folder=sub_folder
-#         )
-
-#         if error:
-#             return jsonify({"error": error}), 400    
-        
-#         # Common images in lists newImagesList & existingImagesList
-#         common_images_in_list = [element for element in newImagesList if element in existingImagesList]
-        
-#         # Final image list = uploaded_urls + common_images_in_list = ['remote_img1]
-#         finalImageList = uploaded_urls.append(common_images_in_list)   
-                
-#         update_data['images'] = finalImageList
-               
-#         # Update restaurant
-#         success = MenuItem.update_item(id, update_data)  
-#         if not success:
-#             return jsonify({"error": "Failed to update item"}), 500
-        
-#         # Get updated menuItem data
-#         updated_item = MenuItem.find_item_by_id(id)
-        
-#         return jsonify({
-#             "message": "Item updated successfully",
-#             "menuItem": updated_item
-#         }), 200
-        
-#     except Exception as e:
-#         return jsonify({"error": "Failed to update item.", "details": str(e)}), 500     
-                            
+                                                  
 @menu_item_bp.route('/updateItem', methods=['PUT'])
 def update_item():
     """Update specific menu item"""
@@ -407,7 +357,7 @@ def update_item():
             return jsonify({"error": "Item not found"}), 404
 
         # Step 1
-        fetched_list_from_mongodb = item.get('images', [])
+        fetched_list_from_mongodb = item.get('images') or []
 
         # 🖼️ Handle image uploads
         uploaded_urls = []
@@ -439,10 +389,10 @@ def update_item():
         # Step 4
         updated_item = MenuItem.find_item_by_id(item_id)
         
-        current_images = updated_item.get('images', [])
+        current_images = updated_item.get('images') or []
         
         # Identify files to upload (those sent in `request.files`)
-        new_images_to_upload = files.getlist("images")
+        new_images_to_upload = files.getlist("images") or []
 
         # Upload new images to S3
         if new_images_to_upload:
