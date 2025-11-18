@@ -45,8 +45,8 @@ def get_all_menu_items():
 
         # Get total count of menu items
         total_count = MenuItem.find_items_by_restaurant_id(restaurant_id, count_only=True)
-        if total_count == 0:
-            return jsonify({"error": "MenuItems not found"}), 404
+        # if total_count == 0:
+        #     return jsonify({"error": "MenuItems not found"}), 404
             
         total_pages = (total_count + page_size - 1) // page_size
 
