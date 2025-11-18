@@ -49,20 +49,23 @@ def create_app():
     CORS(app, supports_credentials=True)
     
     # Register Blueprints - Import inside function to avoid circular imports
-    from app.routes.auth_routes import auth_bp
+    from app.routes.user.auth_routes import auth_bp
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     
-    from app.routes.restaurant_auth_routes import restaurant_auth_bp
+    from app.routes.restaurant.restaurant_auth_routes import restaurant_auth_bp
     app.register_blueprint(restaurant_auth_bp, url_prefix="/api/restaurant/auth")
     
-    from app.routes.user_routes import user_bp
+    from app.routes.user.user_routes import user_bp
     app.register_blueprint(user_bp, url_prefix="/api/users")
     
-    from app.routes.restaurant_routes import restaurant_bp
+    from app.routes.restaurant.restaurant_routes import restaurant_bp
     app.register_blueprint(restaurant_bp, url_prefix="/api/restaurants")
     
-    from app.routes.menu_item_routes import menu_item_bp
-    app.register_blueprint(menu_item_bp, url_prefix="/api/restaurants/menuItems")
+    from app.routes.restaurant.menu_item_routes import restaurant_menu_item_bp
+    app.register_blueprint(restaurant_menu_item_bp, url_prefix="/api/restaurants/menuItems")
+    
+    from app.routes.user.menu_item_routes import user_menu_item_bp
+    app.register_blueprint(user_menu_item_bp, url_prefix="/api/users/menuItems")
     
     # from app.routes.product_routes import product_bp
     # app.register_blueprint(product_bp, url_prefix="/api/products")

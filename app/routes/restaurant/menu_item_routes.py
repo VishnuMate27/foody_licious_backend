@@ -10,7 +10,7 @@ from werkzeug.utils import secure_filename
 from app.extensions import s3_client, S3_BUCKET, S3_REGION
 from botocore.exceptions import NoCredentialsError, ClientError
 
-menu_item_bp = Blueprint('menuItems', __name__)
+restaurant_menu_item_bp = Blueprint('menuItems', __name__)
 
 def get_mongo():
     return current_app.extensions['pymongo'][0]
@@ -18,7 +18,7 @@ def get_mongo():
 def get_bcrypt():
     return current_app.extensions['bcrypt']
 
-@menu_item_bp.route('/allMenuItems', methods=['GET'])
+@restaurant_menu_item_bp.route('/allMenuItems', methods=['GET'])
 def get_all_menu_items():
     """Get all menu items with pagination support"""
     try:
@@ -73,7 +73,7 @@ def get_all_menu_items():
             "details": str(e)
         }), 500
 
-@menu_item_bp.route('/addNewItem', methods=['POST'])
+@restaurant_menu_item_bp.route('/addNewItem', methods=['POST'])
 def add_new_Item():
     """"Add new item in menu"""
     try:
@@ -117,7 +117,7 @@ def add_new_Item():
     except Exception as e:
         return jsonify({"error": "Failed to add new item", "details": str(e)}), 500                                 
 
-@menu_item_bp.route('/increaseItemQuantity', methods=['PUT'])
+@restaurant_menu_item_bp.route('/increaseItemQuantity', methods=['PUT'])
 def increaseItemQuantity():
     """Increase Quantity of Items in Menu"""
     try:
@@ -156,7 +156,7 @@ def increaseItemQuantity():
     except Exception as e:
         return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500        
 
-@menu_item_bp.route('/decreaseItemQuantity', methods=['PUT'])
+@restaurant_menu_item_bp.route('/decreaseItemQuantity', methods=['PUT'])
 def decreaseItemQuantity():
     """Decrease Quantity of Items in Menu"""
     try:
@@ -198,7 +198,7 @@ def decreaseItemQuantity():
     except Exception as e:
         return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500        
 
-@menu_item_bp.route('/deleteItem', methods=['DELETE'])
+@restaurant_menu_item_bp.route('/deleteItem', methods=['DELETE'])
 def delete_item():
     """Delete menu item either by (restaurant_id + name) or by item id."""
     try:
@@ -261,7 +261,7 @@ def delete_item():
             "details": str(e)
         }), 500
 
-@menu_item_bp.route("/upload_menu_item_images", methods=["POST"])
+@restaurant_menu_item_bp.route("/upload_menu_item_images", methods=["POST"])
 def upload_menu_item_images():
     """
     Upload or replace up to 3 images for a menu item in S3.
@@ -331,7 +331,7 @@ def upload_menu_item_images():
         print(f"S3 Upload Error: {e}")
         return jsonify({"error": "Image upload failed. Please check server logs."}), 500
                                                   
-@menu_item_bp.route('/updateItem', methods=['PUT'])
+@restaurant_menu_item_bp.route('/updateItem', methods=['PUT'])
 def update_item():
     """Update specific menu item"""
     try:
