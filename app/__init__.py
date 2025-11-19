@@ -9,6 +9,9 @@ from io import StringIO
 import os
 import json
 
+# Logging
+from app.utils.logging_config import setup_logging
+
 # Extensions
 from app.extensions import mongo, bcrypt, init_s3
 
@@ -31,6 +34,9 @@ def create_app():
     else:
         load_dotenv()
     app = Flask(__name__)
+    
+    # Setup logging
+    setup_logging(app)
     
     # Configuration
     app.config["MONGO_URI"] = os.getenv("MONGODB_URI")
