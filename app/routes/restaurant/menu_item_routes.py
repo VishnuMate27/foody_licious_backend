@@ -1,4 +1,6 @@
-from flask import Blueprint, json, request, jsonify, session, current_app
+import traceback
+from venv import logger
+from flask import Blueprint, app, json, request, jsonify, session, current_app
 from app.core.constansts import ALLOWED_IMAGE_EXTENSIONS, S3_FOLDER_MENU_ITEMS, S3_FOLDER_RESTAURANTS
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
@@ -9,6 +11,8 @@ from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
 from app.extensions import s3_client, S3_BUCKET, S3_REGION
 from botocore.exceptions import NoCredentialsError, ClientError
+import logging
+from logging.handlers import RotatingFileHandler
 
 restaurant_menu_item_bp = Blueprint('menuItems', __name__)
 
@@ -21,6 +25,7 @@ def get_bcrypt():
 @restaurant_menu_item_bp.route('/allMenuItems', methods=['GET'])
 def get_all_menu_items():
     """Get all menu items with pagination support"""
+    app.logger.info(f"Fetching all menu items | restaurantId={request.args.get('restaurant_id')}")
     try:
         # Get restaurant_id from query params
         restaurant_id = request.args.get('restaurant_id')
@@ -30,17 +35,22 @@ def get_all_menu_items():
 
         # Validate pagination parameters
         if page < 1:
+            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page number must be greater than 0")
             return jsonify({"error": "Page number must be greater than 0"}), 400
         if page_size < 1:
+            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page size must be greater than 0")
             return jsonify({"error": "Page size must be greater than 0"}), 400
         if page_size > 100:  # Limit maximum page size
+            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page size cannot exceed 100")
             return jsonify({"error": "Page size cannot exceed 100"}), 400
 
         if not restaurant_id:
+            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | restaurant_id is required")
             return jsonify({"error": "restaurant_id is required"}), 400
 
         restaurant = Restaurant.find_by_id(restaurant_id)
         if not restaurant:
+            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Invalid Request! Restaurant does not exist")
             return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 404
 
         # Get total count of menu items
@@ -53,7 +63,7 @@ def get_all_menu_items():
         # Calculate skip and limit for pagination
         skip = (page - 1) * page_size
         menuItems = MenuItem.find_items_by_restaurant_id(restaurant_id, skip=skip, limit=page_size)
-
+        app.logger.info("Fetched menu items successfully | restaurantId={restaurantId}")
         return jsonify({
             "message": "Fetched menu items successfully",
             "menuItems": menuItems,
@@ -68,6 +78,11 @@ def get_all_menu_items():
         }), 200
 
     except Exception as e:
+        app.logger.error(
+            "Error in get_all_menu_items: %s\n%s", 
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({
             "error": "Failed to get all menu items",
             "details": str(e)
@@ -82,7 +97,10 @@ def add_new_Item():
         required_fields = ['restaurant_id','name', 'description', 'price', 'ingredients']
         for field in required_fields:
             if field not in data or not data[field]:
-                print(f"{field}")
+                app.logger.warning(
+                    "AddMenuItemValidationFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400    
             
         restaurantId = data['restaurant_id'].strip()
@@ -94,15 +112,27 @@ def add_new_Item():
         # For checking the restaurant exists
         restaurant = Restaurant.find_by_id(restaurantId)        
         if not restaurant:
+            app.logger.warning(
+                "AddMenuItemFailed | restaurantId=%s | reason=RestaurantNotFound",
+                restaurantId
+            )
             return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 404  
         
         # For checking the item already exist
         success = MenuItem.find_item_by_name(restaurantId, name)
         if success:
+            app.logger.warning(
+                "AddMenuItemFailed | restaurantId=%s | name=%s | reason=ItemAlreadyExists",
+                restaurantId, name
+            )
             return jsonify({"error": "Invalid Request! Item already exists"}), 409  
         else:    
             menuItem = MenuItem(restaurantId, name, description, price, None, ingredients)
             saved_id = menuItem.save()  
+            app.logger.info(
+                "MenuItemAdded | id=%s | restaurantId=%s | name=%s",
+                saved_id, restaurantId, name
+            )
             return jsonify({
                 "message": "Menu Item added successfully",
                 "menuItem": {
@@ -115,6 +145,11 @@ def add_new_Item():
                 }
             }), 201
     except Exception as e:
+        app.logger.error(
+            "AddMenuItemException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Failed to add new item", "details": str(e)}), 500                                 
 
 @restaurant_menu_item_bp.route('/increaseItemQuantity', methods=['PUT'])
@@ -126,6 +161,9 @@ def increaseItemQuantity():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "IncreaseItemQuantityFailed | reason=ItemIdRequired",
+                )
                 return jsonify({"error": f"{field} is required"}), 400
             
         id = data['id']    
@@ -143,17 +181,29 @@ def increaseItemQuantity():
         
         success = MenuItem.update_item(id, item_data)
         if not success:
+            app.logger.warning(
+                "IncreaseItemQuantityFailed | reason=ItemIdRequired",
+            )
             return jsonify({"error": "Failed to increase item quantity"}), 500
         
         # Get updated menuItem data
         updated_item = MenuItem.find_item_by_id(id)
         
+        app.logger.info(
+            "IncreaseItemQuantitySuccess | id=%s",
+            id
+        )        
         return jsonify({
             "message": "Item quantity increased successfully",
             "menuItem": updated_item
         }), 200
         
     except Exception as e:
+        app.logger.error(
+            "IncreaseItemQuantityException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500        
 
 @restaurant_menu_item_bp.route('/decreaseItemQuantity', methods=['PUT'])
@@ -165,6 +215,9 @@ def decreaseItemQuantity():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "DecreaseItemQuantityFailed | reason=ItemIdRequired",
+                )
                 return jsonify({"error": f"{field} is required"}), 400
             
         id = data['id']    
@@ -185,17 +238,29 @@ def decreaseItemQuantity():
         
         success = MenuItem.update_item(id, item_data)
         if not success:
+            app.logger.warning(
+                "DecreaseItemQuantityFailed | reason=ItemIdRequired",
+            )
             return jsonify({"error": "Failed to decrease item quantity"}), 500
         
         # Get updated menuItem data
         updated_item = MenuItem.find_item_by_id(id)
         
+        app.logger.info(
+            "DecreaseItemQuantitySuccess | id=%s",
+            id
+        )
         return jsonify({
             "message": "Item quantity decreased successfully",
             "menuItem": updated_item
         }), 200 
         
     except Exception as e:
+        app.logger.error(
+            "DecreaseItemQuantityException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Failed to increase item quantity", "details": str(e)}), 500        
 
 @restaurant_menu_item_bp.route('/deleteItem', methods=['DELETE'])
@@ -212,14 +277,24 @@ def delete_item():
             # Validate restaurant existence
             restaurant = Restaurant.find_by_id(restaurant_id)
             if not restaurant:
+                app.logger.warning(
+                    "DeleteItemFailed | reason=RestaurantNotExist",
+                )
                 return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 500  
 
             # Validate menu item existence
             menu_item = MenuItem.find_item_by_name(restaurant_id, name)
             if not menu_item:
+                app.logger.warning(
+                    "DeleteItemFailed | reason=ItemNotExist",
+                )
                 return jsonify({"error": "Item does not exist!"}), 404
 
             MenuItem.delete_item(menu_item['_id'])
+            app.logger.info(
+                "DeleteItemQuantitySuccess | id=%s",
+                id
+            )            
             return jsonify({
                 "message": "Item deleted successfully using restaurant_id and name",
                 "menuItemId": str(menu_item['_id'])
@@ -231,6 +306,9 @@ def delete_item():
 
             menu_item = MenuItem.find_item_by_id(item_id)
             if not menu_item:
+                app.logger.warning(
+                    "DeleteItemFailed | reason=ItemNotExist",
+                )
                 return jsonify({"error": "Item does not exist!"}), 404
             
             try:
@@ -241,9 +319,16 @@ def delete_item():
                 delete_s3_folder(s3_client, S3_BUCKET, f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{item_id}/")
             except (NoCredentialsError, ClientError) as e:
                 print(f"S3 Deletion Error: {e}")
+                app.logger.warning(
+                    "DeleteItemFailed | reason=FailedToDeleteImgFromS3",
+                )
                 return jsonify({"error": "Failed to delete image from S3."}), 500
             
             MenuItem.delete_item(item_id)
+            app.logger.info(
+                "DeleteItemSuccess | id=%s",
+                id
+            )
             return jsonify({
                 "message": "Item deleted successfully using item id",
                 "menuItemId": str(item_id)
@@ -251,11 +336,19 @@ def delete_item():
 
         # Case 3: Missing required parameters
         else:
+            app.logger.warning(
+                "DeleteItemFailed | reason=InvalidRequest",
+            )            
             return jsonify({
                 "error": "Invalid request. Provide either (restaurant_id and name) or (id)."
             }), 400
 
     except Exception as e:
+        app.logger.error(
+            "DeleteItemException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({
             "error": "Failed to delete item.",
             "details": str(e)
@@ -271,6 +364,9 @@ def upload_menu_item_images():
     try:
         # --- Required field checks ---
         if "images" not in request.files:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=AtLeastOneImageRequired",
+            )
             return jsonify({"error": "At least one image file is required."}), 400
 
         images = request.files.getlist("images")
@@ -280,19 +376,37 @@ def upload_menu_item_images():
         sub_folder = request.form.get("sub_folder", "").strip()
 
         if not item_id:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=ItemIdRequired",
+            )
             return jsonify({"error": "item_id is required."}), 400
         if not restaurant_id:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=RestaurantIdRequired",
+            )            
             return jsonify({"error": "restaurant_id is required."}), 400
         if not folder:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=FolderRequired",
+            )            
             return jsonify({"error": "folder is required."}), 400
         if not images or len(images) == 0:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=NoImageProvided",
+            )            
             return jsonify({"error": "No images provided."}), 400
         if len(images) > MAX_IMAGES:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=Max{MAX_IMAGES}AreAllowed",
+            )            
             return jsonify({"error": f"Maximum {MAX_IMAGES} images are allowed."}), 400
 
         # Validate menu item existence
         menu_item = MenuItem.find_item_by_id(item_id)
         if not menu_item:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=MenuItemNotFound",
+            )            
             return jsonify({"error": "Menu item not found."}), 404
         
         update_data = {}
@@ -309,6 +423,11 @@ def upload_menu_item_images():
         )        
 
         if error:
+            app.logger.error(
+                "UploadItemImageException | error=%s\n%s",
+                str(e),
+                traceback.format_exc()
+            )    
             return jsonify({"error": error}), 400
         
         update_data['images'] = uploaded_urls
@@ -316,11 +435,18 @@ def upload_menu_item_images():
         success = MenuItem.update_item(item_id, update_data)
         
         if not success:
+            app.logger.warning(
+                "UploadItemImageFailed | reason=FailedToUpdateItem",
+            )    
             return jsonify({"error": "Failed to update item"}), 500
         
         # Fetch updated menu item
         updated_item = MenuItem.find_item_by_id(item_id) # Convert ObjectId to string for JSON
 
+        app.logger.info(
+            "UploadItemImage | itemId=%s",
+            item_id
+        )        
         return jsonify({
             "message": f"Uploaded {len(uploaded_urls)} image(s) successfully.",
             "uploaded_urls": uploaded_urls,
@@ -328,7 +454,11 @@ def upload_menu_item_images():
         }), 200
 
     except (NoCredentialsError, ClientError) as e:
-        print(f"S3 Upload Error: {e}")
+        app.logger.error(
+            "UploadItemImageException | error=%s\n%s | S3 image upload error",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Image upload failed. Please check server logs."}), 500
                                                   
 @restaurant_menu_item_bp.route('/updateItem', methods=['PUT'])
