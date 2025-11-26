@@ -472,6 +472,9 @@ def update_item():
         # Required fields
         item_id = form.get('id')
         if not item_id:
+            app.logger.warning(
+                "UpdateItemFailed | reason=ItemIdRequired",
+            )            
             return jsonify({"error": "id is required"}), 400
 
         folder = form.get("folder", "").strip()
@@ -484,6 +487,9 @@ def update_item():
         # 🔍 Get the existing item from DB
         item = MenuItem.find_item_by_id(item_id)
         if not item:
+            app.logger.warning(
+               "UpdateItemFailed | reason=ItemNotFound",
+            )    
             return jsonify({"error": "Item not found"}), 404
 
         # Step 1
@@ -499,6 +505,9 @@ def update_item():
             try:
                 existing_remote_images_from_client = json.loads(form['images'])
             except Exception as e:
+                app.logger.warning(
+                    "UpdateItemFailed | reason=InvalidImageFormat",
+                )   
                 return jsonify({"error": "Invalid format for images", "details": str(e)}), 400
 
         # Step 2
@@ -514,6 +523,9 @@ def update_item():
             
         success = MenuItem.update_item(item_id, update_data)
         if not success:
+            app.logger.warning(
+                "UpdateItemFailed | reason=FailedToUpdateItems",
+            )   
             return jsonify({"error": "Failed to update item"}), 500
         
         # Step 4
@@ -538,6 +550,9 @@ def update_item():
             )
 
             if error:
+                app.logger.warning(
+                    "UpdateItemFailed | reason={error}",
+                )
                 return jsonify({"error": error}), 400 
 
         # Step 5
@@ -547,17 +562,28 @@ def update_item():
         # Step 6
         success = MenuItem.update_item(item_id, update_data)
         if not success:
+            app.logger.warning(
+                "UpdateItemFailed | reason={error}",
+            )
             return jsonify({"error": "Failed to update item"}), 500
 
         # ✅ Fetch updated item to return
         updated_item = MenuItem.find_item_by_id(item_id)
-
+        app.logger.info(
+            "UpdateItemSuccess | id=%s",
+            item_id
+        )
         return jsonify({
             "message": "Item updated successfully",
             "menuItem": updated_item
         }), 200
 
     except Exception as e:
+        app.logger.error(
+            "UpdateItemException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({
             "error": "Failed to update item.",
             "details": str(e)
