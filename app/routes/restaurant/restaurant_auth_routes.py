@@ -1,6 +1,7 @@
+import traceback
 import requests
 from requests.auth import HTTPBasicAuth
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, app, request, jsonify, session, current_app
 from firebase_admin import auth as firebase_auth
 from app.models.restaurant import Restaurant
 from bson.objectid import ObjectId
@@ -21,6 +22,10 @@ def register():
         required_fields = ['id','ownerName','authProvider']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "RestaurantRegistrationFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
         id = data['id']
         email = data['email'].lower().strip()
@@ -30,15 +35,23 @@ def register():
         photoUrl = data['photoUrl']
         # Validate email format
         if not Restaurant.validate_email(email):
+            app.logger.warning(
+                    "RestaurantRegistrationFailed | email=%s | reason=InvalidEmailFormat",
+                    email
+            )
             return jsonify({"error": "Invalid email format"}), 400
         
         # Check if restaurant already exists
         if Restaurant.find_by_id(id):
+            app.logger.warning(
+                    "RestaurantRegistrationFailed | id=%s | reason=RestaurantAlreadyExists",
+                    id
+            )
             return jsonify({"error": "Restaurant with this id already exists"}), 409
         
         restaurant = Restaurant(id, email, ownerName, phone, authProvider, photoUrl)
         restaurant_id = restaurant.save()
-        
+        app.logger.info("Restaurant registered successfully | restaurantId={id}")
         return jsonify({
             "message": "Restaurant registered successfully",
             "restaurant": {
@@ -52,6 +65,11 @@ def register():
         }), 201
         
     except Exception as e:
+        app.logger.error(
+            "Error in registering restaurant: %s\n%s", 
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
 @restaurant_auth_bp.route('/sendVerificationCodeForRegistration', methods=['POST'])
@@ -61,18 +79,30 @@ def send_verification_code_for_registration():
         data = request.get_json()
 
         if 'phone' not in data or not data['phone']:
+            app.logger.warning(
+                "SendVerificationCodeForRegistrationFailed | payload=%s",
+                data
+            )
             return jsonify({"error": "phone is required"}), 400
 
         phone = data['phone'].strip()
 
         # ✅ Check if user already exists in MongoDB
         if Restaurant.find_by_phone(phone):
+            app.logger.warning(
+                "SendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                data
+            )
             return jsonify({"error": "Restaurant with this phone already exists in MongoDB"}), 409
 
         # ✅ Check if user already exists in Firebase
         try:
             fb_user = firebase_auth.get_user_by_phone_number(phone)
             if fb_user:
+                app.logger.warning(
+                    "SendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
+                    data
+                )
                 return jsonify({"error": "Restaurant with this phone already exists in Firebase"}), 409
         except firebase_auth.UserNotFoundError:
             pass  # ✅ Safe, means phone is not registered in Firebase
@@ -95,17 +125,28 @@ def send_verification_code_for_registration():
 
         # Twilio returns 201 Created on success
         if response.status_code == 201:
+            app.logger.info(
+                "SendVerificationCodeForRegistrationSuccess",
+            )
             return jsonify({
                 "message": "Verification code sent successfully",
                 "details": response.json()
             }), 201
         else:
+            app.logger.info(
+                "SendVerificationCodeForRegistrationFailed | reason={response.status_code}",
+            )    
             return jsonify({
                 "error": "Failed to send verification code",
                 "details": response.json()
             }), response.status_code
 
     except Exception as e:
+        app.logger.error(
+            "SendVerificationCodeForRegistrationException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Verification request failed", "details": str(e)}), 500
 
 @restaurant_auth_bp.route('/verifyCodeAndRegisterWithPhone', methods=['POST'])
@@ -118,6 +159,10 @@ def verify_code_and_register_with_phone():
         required_fields = ['ownerName', 'phone', 'authProvider', 'code']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "VerifyCodeAndRegisterWithPhoneFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         ownerName = data['ownerName'].strip()
@@ -127,6 +172,9 @@ def verify_code_and_register_with_phone():
 
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
+            app.logger.warning(
+                "VerifyCodeAndRegisterWithPhoneFailed | reason=ItemIdRequired",
+            )
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
         # ✅ Step 1: Verify OTP with Twilio
@@ -145,6 +193,9 @@ def verify_code_and_register_with_phone():
         result = response.json()
 
         if response.status_code != 200 or result.get("status") != "approved":
+            app.logger.warning(
+                "VerifyCodeAndRegisterWithPhoneFailed | reason=PhoneVerificationFailed",
+            )
             return jsonify({
                 "error": "Phone verification failed",
                 "details": result
@@ -152,6 +203,10 @@ def verify_code_and_register_with_phone():
 
         # ✅ Step 2: Check if restaurant already exists in MongoDB
         if Restaurant.find_by_phone(phone):
+            app.logger.warning(
+                "VerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                data
+            )            
             return jsonify({"error": "Restaurant with this phone already exists"}), 409
 
         # ✅ Step 3: Check Firebase user
@@ -163,6 +218,10 @@ def verify_code_and_register_with_phone():
             else:
                 saved_id = existing_user.uid
 
+            app.logger.warning(
+                "VerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
+                data
+            )  
             return jsonify({
                 "message": "Restaurant already exists in Firebase",
                 "firebaseUid": existing_user.uid,
@@ -183,7 +242,9 @@ def verify_code_and_register_with_phone():
 
             restaurant = Restaurant(fb_user.uid, None, ownerName, phone, authProvider, None)
             saved_id = restaurant.save()
-
+            app.logger.info(
+                "VerifyCodeAndRegisterWithPhoneSuccess",
+            )
             return jsonify({
                 "message": "User registered successfully with phone",
                 "firebaseUid": fb_user.uid,
@@ -196,7 +257,11 @@ def verify_code_and_register_with_phone():
             }), 201
 
     except Exception as e:
-        print(e);
+        app.logger.error(
+            "VerifyCodeAndRegisterWithPhoneException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
 @restaurant_auth_bp.route('/login', methods=['POST'])
@@ -207,6 +272,10 @@ def login():
 
         # Always required
         if 'authProvider' not in data or not data['authProvider']:
+            app.logger.warning(
+                "RestaurantLoginFailed | payload=%s | reason=AuthProviderRequired",
+                data
+            )            
             return jsonify({"error": "authProvider is required"}), 400
 
         authProvider = data['authProvider']
@@ -220,6 +289,10 @@ def login():
         # Validate required fields
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "RestaurantLoginFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         # Find restaurant depending on provider
@@ -231,10 +304,18 @@ def login():
             restaurant = Restaurant.find_by_id(restaurant_id)
 
         if not restaurant:
-            return jsonify({"error": "User not found"}), 404
+            app.logger.warning(
+                "RestaurantLoginFailed | payload=%s | reason=RestaurantNotFound",
+                data
+            )
+            return jsonify({"error": "Restaurant not found"}), 404
 
         # Verify authProvider matches
         if restaurant.get("authProvider") != authProvider:
+            app.logger.warning(
+                "RestaurantLoginFailed | payload=%s | reason=AuthenticationProviderMismatch",
+                data
+            )    
             return jsonify({"error": "Authentication provider mismatch"}), 401
 
         # Update last_login_at
@@ -242,7 +323,9 @@ def login():
 
         # Fetch updated restaurant
         updated_restaurant = Restaurant.find_by_id(restaurant["_id"])
-        
+        app.logger.info(
+            "RestaurantLoginSuccess",
+        )        
         return jsonify({
             "message": "Login successful",
             "restaurant": {
