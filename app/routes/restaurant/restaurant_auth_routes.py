@@ -80,7 +80,7 @@ def send_verification_code_for_registration():
 
         if 'phone' not in data or not data['phone']:
             app.logger.warning(
-                "SendVerificationCodeForRegistrationFailed | payload=%s",
+                "RestaurantSendVerificationCodeForRegistrationFailed | payload=%s",
                 data
             )
             return jsonify({"error": "phone is required"}), 400
@@ -90,7 +90,7 @@ def send_verification_code_for_registration():
         # ✅ Check if user already exists in MongoDB
         if Restaurant.find_by_phone(phone):
             app.logger.warning(
-                "SendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                "RestaurantSendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
                 data
             )
             return jsonify({"error": "Restaurant with this phone already exists in MongoDB"}), 409
@@ -100,7 +100,7 @@ def send_verification_code_for_registration():
             fb_user = firebase_auth.get_user_by_phone_number(phone)
             if fb_user:
                 app.logger.warning(
-                    "SendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
+                    "RestaurantSendVerificationCodeForRegistrationFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
                     data
                 )
                 return jsonify({"error": "Restaurant with this phone already exists in Firebase"}), 409
@@ -126,7 +126,7 @@ def send_verification_code_for_registration():
         # Twilio returns 201 Created on success
         if response.status_code == 201:
             app.logger.info(
-                "SendVerificationCodeForRegistrationSuccess",
+                "RestaurantSendVerificationCodeForRegistrationSuccess",
             )
             return jsonify({
                 "message": "Verification code sent successfully",
@@ -134,7 +134,7 @@ def send_verification_code_for_registration():
             }), 201
         else:
             app.logger.info(
-                "SendVerificationCodeForRegistrationFailed | reason={response.status_code}",
+                "RestaurantSendVerificationCodeForRegistrationFailed | reason={response.status_code}",
             )    
             return jsonify({
                 "error": "Failed to send verification code",
@@ -143,7 +143,7 @@ def send_verification_code_for_registration():
 
     except Exception as e:
         app.logger.error(
-            "SendVerificationCodeForRegistrationException | error=%s\n%s",
+            "RestaurantSendVerificationCodeForRegistrationException | error=%s\n%s",
             str(e),
             traceback.format_exc()
         )
@@ -353,18 +353,30 @@ def send_verification_code_for_login():
         data = request.get_json()
 
         if 'phone' not in data or not data['phone']:
+            app.logger.warning(
+                "RestaurantSendVerificationCodeForLoginFailed | payload=%s | reason=PhoneRequired",
+                data
+            )           
             return jsonify({"error": "phone is required"}), 400
 
         phone = data['phone'].strip()
 
         # ✅ Check if user not exists in MongoDB
         if not Restaurant.find_by_phone(phone):
+            app.logger.warning(
+                "RestaurantSendVerificationCodeForLoginFailed | payload=%s | reason=RestaurantNotExistInMongoDB",
+                data
+            )
             return jsonify({"error": "Restaurant with this phone does not exists in MongoDB"}), 404
 
         # ✅ Check if user not already exists in Firebase
         try:
             firebase_auth.get_user_by_phone_number(phone)
         except firebase_auth.UserNotFoundError:
+            app.logger.warning(
+                "RestaurantSendVerificationCodeForLoginFailed | payload=%s | reason=RestaurantNotExistInFirebase",
+                data
+            )
             return jsonify({"error": "Restaurant with this phone does not exists in Firebase"}), 404
 
         # 🔹 If no user in MongoDB or Firebase → send Twilio OTP
@@ -385,17 +397,28 @@ def send_verification_code_for_login():
 
         # Twilio returns 201 Created on success
         if response.status_code == 201:
+            app.logger.info(
+                "RestaurantSendVerificationCodeForLoginSuccess",
+            )
             return jsonify({
                 "message": "Verification code sent successfully",
                 "details": response.json()
             }), 200
         else:
+            app.logger.info(
+                "RestaurantSendVerificationCodeForLoginFailed | reason={response.status_code}",
+            )
             return jsonify({
                 "error": "Failed to send verification code",
                 "details": response.json()
             }), response.status_code
 
     except Exception as e:
+        app.logger.error(
+            "RestaurantSendVerificationCodeForLoginException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Verification request failed", "details": str(e)}), 500
 
 @restaurant_auth_bp.route('/verifyCodeAndLoginWithPhone', methods=['POST'])
@@ -408,6 +431,10 @@ def verify_code_and_login_with_phone():
         required_fields = ['phone', 'authProvider', 'code']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "VerifyCodeAndLoginWithPhoneFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         phone = data['phone'].strip()
@@ -416,6 +443,9 @@ def verify_code_and_login_with_phone():
 
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
+            app.logger.warning(
+                "VerifyCodeAndLoginWithPhoneFailed | reason=ItemIdRequired",
+            )            
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
         # ✅ Step 1: Verify OTP with Twilio
@@ -434,6 +464,9 @@ def verify_code_and_login_with_phone():
         result = response.json()
 
         if response.status_code != 200 or result.get("status") != "approved":
+            app.logger.warning(
+                "VerifyCodeAndLoginWithPhoneFailed | reason=PhoneVerificationFailed",
+            )
             return jsonify({
                 "error": "Phone verification failed",
                 "details": result
@@ -441,6 +474,10 @@ def verify_code_and_login_with_phone():
 
         # ✅ Step 2: Check if user not exists in MongoDB
         if not Restaurant.find_by_phone(phone):
+            app.logger.warning(
+                "VerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                data
+            )
             return jsonify({"error": "Restaurant with this phone does not exists in MongoDB"}), 404
 
         # ✅ Step 3: Check Firebase user
@@ -449,7 +486,9 @@ def verify_code_and_login_with_phone():
             if Restaurant.find_by_id(existing_user.uid):
                 restaurant = Restaurant.find_by_id(existing_user.uid)
                 Restaurant.update_last_login(restaurant["_id"])    
-
+            app.logger.info(
+                "VerifyCodeAndLoginWithPhoneSuccess",
+            )  
             return jsonify({
                 "message": "Restaurant login successful!",
                 "firebaseUid": existing_user.uid,
@@ -470,7 +509,16 @@ def verify_code_and_login_with_phone():
 
         except firebase_auth.UserNotFoundError:
             # User not exist in firebase
+            app.logger.warning(
+                "VerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantNotExists",
+                data
+            )
             return jsonify({"message": "Restaurant with this phone does not exists"}), 404
 
     except Exception as e:
+        app.logger.error(
+            "VerifyCodeAndLoginWithPhoneException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Login failed", "details": str(e)}), 500
