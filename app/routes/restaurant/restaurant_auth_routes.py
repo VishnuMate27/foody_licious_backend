@@ -133,7 +133,7 @@ def send_verification_code_for_registration():
                 "details": response.json()
             }), 201
         else:
-            app.logger.info(
+            app.logger.warning(
                 "RestaurantSendVerificationCodeForRegistrationFailed | reason={response.status_code}",
             )    
             return jsonify({
@@ -405,7 +405,7 @@ def send_verification_code_for_login():
                 "details": response.json()
             }), 200
         else:
-            app.logger.info(
+            app.logger.warning(
                 "RestaurantSendVerificationCodeForLoginFailed | reason={response.status_code}",
             )
             return jsonify({
