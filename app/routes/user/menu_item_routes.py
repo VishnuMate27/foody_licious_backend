@@ -1,4 +1,5 @@
-from flask import Blueprint, json, request, jsonify, session, current_app
+import traceback
+from flask import Blueprint, app, json, request, jsonify, session, current_app
 from app.core.constansts import ALLOWED_IMAGE_EXTENSIONS, S3_FOLDER_MENU_ITEMS, S3_FOLDER_RESTAURANTS
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
@@ -25,13 +26,17 @@ def get_all_items_in_restaurants_of_users_city():
         
         # Validate pagination parameters
         if page < 1:
+            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page number must be greater than 0")
             return jsonify({"error": "Page number must be greater than 0"}), 400
         if page_size < 1:
+            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size must be greater than 0")            
             return jsonify({"error": "Page size must be greater than 0"}), 400
         if page_size > 100:  # Limit maximum page size
+            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size cannot exceed 100")
             return jsonify({"error": "Page size cannot exceed 100"}), 400
         
         if not user_id:
+            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | user_id is required")
             return jsonify({"error": "user_id is required"}), 400
 
         # Get the user's city location    
@@ -44,6 +49,11 @@ def get_all_items_in_restaurants_of_users_city():
         # Get the list of menus from these restaurants
         # Show it to user  
     except Exception as e:
-        return jsonify({"error": "Failed to get all items", "details": str(e)}), 500      
+        app.logger.error(
+            "Error in get all items in restaurants of users city: %s\n%s", 
+            str(e),
+            traceback.format_exc()
+        )
+        return jsonify({"error": "Failed to get all items in restaurants of users city", "details": str(e)}), 500      
             
         

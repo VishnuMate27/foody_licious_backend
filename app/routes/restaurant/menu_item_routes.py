@@ -25,7 +25,6 @@ def get_bcrypt():
 @restaurant_menu_item_bp.route('/allMenuItems', methods=['GET'])
 def get_all_menu_items():
     """Get all menu items with pagination support"""
-    app.logger.info(f"Fetching all menu items | restaurantId={request.args.get('restaurant_id')}")
     try:
         # Get restaurant_id from query params
         restaurant_id = request.args.get('restaurant_id')
@@ -35,22 +34,22 @@ def get_all_menu_items():
 
         # Validate pagination parameters
         if page < 1:
-            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page number must be greater than 0")
+            app.logger.warning(f"Failed to fetch menu items | restaurantId={restaurant_id} | Page number must be greater than 0")
             return jsonify({"error": "Page number must be greater than 0"}), 400
         if page_size < 1:
-            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page size must be greater than 0")
+            app.logger.warning(f"Failed to fetch menu items | restaurantId={restaurant_id} | Page size must be greater than 0")
             return jsonify({"error": "Page size must be greater than 0"}), 400
         if page_size > 100:  # Limit maximum page size
-            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Page size cannot exceed 100")
+            app.logger.warning(f"Failed to fetch menu items | restaurantId={restaurant_id} | Page size cannot exceed 100")
             return jsonify({"error": "Page size cannot exceed 100"}), 400
 
         if not restaurant_id:
-            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | restaurant_id is required")
+            app.logger.warning(f"Failed to fetch menu items | restaurantId={restaurant_id} | restaurant_id is required")
             return jsonify({"error": "restaurant_id is required"}), 400
 
         restaurant = Restaurant.find_by_id(restaurant_id)
         if not restaurant:
-            app.logger.error(f"Failed to fetch menu items | restaurantId={restaurantId} | Invalid Request! Restaurant does not exist")
+            app.logger.warning(f"Failed to fetch menu items | restaurantId={restaurant_id} | Invalid Request! Restaurant does not exist")
             return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 404
 
         # Get total count of menu items
@@ -216,7 +215,7 @@ def decreaseItemQuantity():
         for field in required_fields:
             if field not in data or not data[field]:
                 app.logger.warning(
-                    "DecreaseItemQuantityFailed | reason=ItemIdRequired",
+                    f"DecreaseItemQuantityFailed | reason={field}Required",
                 )
                 return jsonify({"error": f"{field} is required"}), 400
             
@@ -319,8 +318,10 @@ def delete_item():
                 delete_s3_folder(s3_client, S3_BUCKET, f"{folder.rstrip('/')}/{restaurant_id}/{sub_folder.rstrip('/')}/{item_id}/")
             except (NoCredentialsError, ClientError) as e:
                 print(f"S3 Deletion Error: {e}")
-                app.logger.warning(
-                    "DeleteItemFailed | reason=FailedToDeleteImgFromS3",
+                app.logger.error(
+                    "DeleteItemException | reason=FailedToDeleteImgFromS3 | error=%s\n%s",
+                    str(e),
+                    traceback.format_exc()
                 )
                 return jsonify({"error": "Failed to delete image from S3."}), 500
             

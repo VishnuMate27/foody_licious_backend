@@ -1,6 +1,7 @@
+import traceback
 import requests
 from requests.auth import HTTPBasicAuth
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, app, request, jsonify, session, current_app
 from firebase_admin import auth as firebase_auth
 from app.models.user import User
 from bson.objectid import ObjectId
@@ -21,6 +22,10 @@ def register():
         required_fields = ['id','name','authProvider']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "UserRegistrationFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
         id = data['id']
         email = data['email'].lower().strip()
@@ -29,15 +34,24 @@ def register():
         authProvider = data['authProvider']
         # Validate email format
         if not User.validate_email(email):
+            app.logger.warning(
+                "UserRegistrationFailed | email=%s | reason=InvalidEmailFormat",
+                email
+            )
             return jsonify({"error": "Invalid email format"}), 400
         
         # Check if user already exists
         if User.find_by_id(id):
+            app.logger.warning(
+                "UserRegistrationFailed | id=%s | reason=UserAlreadyExists",
+                id
+            )
             return jsonify({"error": "User with this id already exists"}), 409
         
         user = User(id, email, name, phone, authProvider)
         user_id = user.save()
         
+        app.logger.info(f"UserRegistrationSuccess | userId={id}")
         return jsonify({
             "message": "User registered successfully",
             "user": {
@@ -50,6 +64,11 @@ def register():
         }), 201
         
     except Exception as e:
+        app.logger.error(
+            "Error in registering user: %s\n%s", 
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
 @auth_bp.route('/sendVerificationCodeForRegistration', methods=['POST'])
@@ -59,18 +78,30 @@ def send_verification_code_for_registration():
         data = request.get_json()
 
         if 'phone' not in data or not data['phone']:
+            app.logger.warning(
+                "UserSendVerificationCodeForRegistrationFailed | payload=%s",
+                data
+            )
             return jsonify({"error": "phone is required"}), 400
 
         phone = data['phone'].strip()
 
         # ✅ Check if user already exists in MongoDB
         if User.find_by_phone(phone):
+            app.logger.warning(
+                "UserSendVerificationCodeForRegistrationFailed | payload=%s | reason=UserAlreadyExistInMongoDB",
+                data
+            )
             return jsonify({"error": "User with this phone already exists in MongoDB"}), 409
 
         # ✅ Check if user already exists in Firebase
         try:
             fb_user = firebase_auth.get_user_by_phone_number(phone)
             if fb_user:
+                app.logger.warning(
+                    "UserSendVerificationCodeForRegistrationFailed | payload=%s | reason=UserAlreadyExistInFirebase",
+                    data
+                )
                 return jsonify({"error": "User with this phone already exists in Firebase"}), 409
         except firebase_auth.UserNotFoundError:
             pass  # ✅ Safe, means phone is not registered in Firebase
@@ -93,17 +124,28 @@ def send_verification_code_for_registration():
 
         # Twilio returns 201 Created on success
         if response.status_code == 201:
+            app.logger.info(
+                "UserSendVerificationCodeForRegistrationSuccess",
+            )
             return jsonify({
                 "message": "Verification code sent successfully",
                 "details": response.json()
             }), 201
         else:
+            app.logger.warning(
+                f"UserSendVerificationCodeForRegistrationFailed | reason={response.status_code}",
+            )
             return jsonify({
                 "error": "Failed to send verification code",
                 "details": response.json()
             }), response.status_code
 
     except Exception as e:
+        app.logger.error(
+            "UserSendVerificationCodeForRegistrationException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Verification request failed", "details": str(e)}), 500
 
 @auth_bp.route('/verifyCodeAndRegisterWithPhone', methods=['POST'])
@@ -116,6 +158,10 @@ def verify_code_and_register_with_phone():
         required_fields = ['name', 'phone', 'authProvider', 'code']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "UserVerifyCodeAndRegisterWithPhoneFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         name = data['name'].strip()
@@ -125,6 +171,9 @@ def verify_code_and_register_with_phone():
 
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
+            app.logger.warning(
+                "UserVerifyCodeAndRegisterWithPhoneFailed | reason=ItemIdRequired",
+            )
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
         # ✅ Step 1: Verify OTP with Twilio
@@ -143,6 +192,9 @@ def verify_code_and_register_with_phone():
         result = response.json()
 
         if response.status_code != 200 or result.get("status") != "approved":
+            app.logger.warning(
+                "UserVerifyCodeAndRegisterWithPhoneFailed | reason=PhoneVerificationFailed",
+            )
             return jsonify({
                 "error": "Phone verification failed",
                 "details": result
@@ -150,6 +202,10 @@ def verify_code_and_register_with_phone():
 
         # ✅ Step 2: Check if user already exists in MongoDB
         if User.find_by_phone(phone):
+            app.logger.warning(
+                "UserVerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=UserAlreadyExistInMongoDB",
+                data
+            )
             return jsonify({"error": "User with this phone already exists"}), 409
 
         # ✅ Step 3: Check Firebase user
@@ -161,6 +217,10 @@ def verify_code_and_register_with_phone():
             else:
                 saved_id = existing_user.uid
 
+            app.logger.warning(
+                "UserVerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=UserAlreadyExistInFirebase",
+                data
+            )  
             return jsonify({
                 "message": "User already exists in Firebase",
                 "firebaseUid": existing_user.uid,
@@ -181,7 +241,9 @@ def verify_code_and_register_with_phone():
 
             user = User(fb_user.uid, None, name, phone, authProvider)
             saved_id = user.save()
-
+            app.logger.info(
+                "UserVerifyCodeAndRegisterWithPhoneSuccess",
+            )
             return jsonify({
                 "message": "User registered successfully with phone",
                 "firebaseUid": fb_user.uid,
@@ -194,6 +256,11 @@ def verify_code_and_register_with_phone():
             }), 201
 
     except Exception as e:
+        app.logger.error(
+            "UserVerifyCodeAndRegisterWithPhoneException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Registration failed", "details": str(e)}), 500
 
 @auth_bp.route('/login', methods=['POST'])
@@ -204,6 +271,10 @@ def login():
 
         # Always required
         if 'authProvider' not in data or not data['authProvider']:
+            app.logger.warning(
+                "UserLoginFailed | payload=%s | reason=AuthProviderRequired",
+                data
+            )
             return jsonify({"error": "authProvider is required"}), 400
 
         authProvider = data['authProvider']
@@ -217,6 +288,10 @@ def login():
         # Validate required fields
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "UserLoginFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         # Find user depending on provider
@@ -228,10 +303,18 @@ def login():
             user = User.find_by_id(user_id)
 
         if not user:
+            app.logger.warning(
+                "UserLoginFailed | payload=%s | reason=UserNotFound",
+                data
+            )
             return jsonify({"error": "User not found"}), 404
 
         # Verify authProvider matches
         if user.get("authProvider") != authProvider:
+            app.logger.warning(
+                "UserLoginFailed | payload=%s | reason=AuthenticationProviderMismatch",
+                data
+            )
             return jsonify({"error": "Authentication provider mismatch"}), 401
 
         # Update last_login_at
@@ -239,7 +322,9 @@ def login():
 
         # Fetch updated user
         updated_user = User.find_by_id(user["_id"])
-
+        app.logger.info(
+            "UserLoginSuccess",
+        )
         return jsonify({
             "message": "Login successful",
             "user": {
@@ -254,6 +339,11 @@ def login():
         }), 200
 
     except Exception as e:
+        app.logger.error(
+            "UserLoginException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Login failed", "details": str(e)}), 500
 
 @auth_bp.route('/sendVerificationCodeForLogin', methods=['POST'])
@@ -263,18 +353,30 @@ def send_verification_code_for_login():
         data = request.get_json()
 
         if 'phone' not in data or not data['phone']:
+            app.logger.warning(
+                "UserSendVerificationCodeForLoginFailed | payload=%s | reason=PhoneRequired",
+                data
+            )
             return jsonify({"error": "phone is required"}), 400
 
         phone = data['phone'].strip()
 
         # ✅ Check if user not exists in MongoDB
         if not User.find_by_phone(phone):
+            app.logger.warning(
+                "UserSendVerificationCodeForLoginFailed | payload=%s | reason=UserNotExistInMongoDB",
+                data
+            )
             return jsonify({"error": "User with this phone does not exists in MongoDB"}), 404
 
         # ✅ Check if user not already exists in Firebase
         try:
             firebase_auth.get_user_by_phone_number(phone)
         except firebase_auth.UserNotFoundError:
+            app.logger.warning(
+                "UserSendVerificationCodeForLoginFailed | payload=%s | reason=UserNotExistInFirebase",
+                data
+            )
             return jsonify({"error": "User with this phone does not exists in Firebase"}), 404
 
         # 🔹 If no user in MongoDB or Firebase → send Twilio OTP
@@ -295,17 +397,28 @@ def send_verification_code_for_login():
 
         # Twilio returns 201 Created on success
         if response.status_code == 201:
+            app.logger.info(
+                "UserSendVerificationCodeForLoginSuccess",
+            )
             return jsonify({
                 "message": "Verification code sent successfully",
                 "details": response.json()
             }), 200
         else:
+            app.logger.warning(
+                "UserSendVerificationCodeForLoginFailed | reason={response.status_code}",
+            )
             return jsonify({
                 "error": "Failed to send verification code",
                 "details": response.json()
             }), response.status_code
 
     except Exception as e:
+        app.logger.error(
+            "UserSendVerificationCodeForLoginException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Verification request failed", "details": str(e)}), 500
 
 @auth_bp.route('/verifyCodeAndLoginWithPhone', methods=['POST'])
@@ -318,6 +431,10 @@ def verify_code_and_login_with_phone():
         required_fields = ['phone', 'authProvider', 'code']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    "UserVerifyCodeAndLoginWithPhoneFailed | field=%s | payload=%s",
+                    field, data
+                )
                 return jsonify({"error": f"{field} is required"}), 400
 
         phone = data['phone'].strip()
@@ -326,6 +443,9 @@ def verify_code_and_login_with_phone():
 
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
+            app.logger.warning(
+                "UserVerifyCodeAndLoginWithPhoneFailed | reason=InvalidPhoneNumber",
+            )
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
         # ✅ Step 1: Verify OTP with Twilio
@@ -344,6 +464,9 @@ def verify_code_and_login_with_phone():
         result = response.json()
 
         if response.status_code != 200 or result.get("status") != "approved":
+            app.logger.warning(
+                "UserVerifyCodeAndLoginWithPhoneFailed | reason=PhoneVerificationFailed",
+            )
             return jsonify({
                 "error": "Phone verification failed",
                 "details": result
@@ -351,6 +474,10 @@ def verify_code_and_login_with_phone():
 
         # ✅ Step 2: Check if user not exists in MongoDB
         if not User.find_by_phone(phone):
+            app.logger.warning(
+                "UserVerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=UserAlreadyExistInMongoDB",
+                data
+            )
             return jsonify({"error": "User with this phone does not exists in MongoDB"}), 404
 
         # ✅ Step 3: Check Firebase user
@@ -359,7 +486,9 @@ def verify_code_and_login_with_phone():
             if User.find_by_id(existing_user.uid):
                 user = User.find_by_id(existing_user.uid)
                 User.update_last_login(user["_id"])    
-
+            app.logger.info(
+                "UserVerifyCodeAndLoginWithPhoneSuccess",
+            )
             return jsonify({
                 "message": "User login successful!",
                 "firebaseUid": existing_user.uid,
@@ -375,8 +504,17 @@ def verify_code_and_login_with_phone():
 
         except firebase_auth.UserNotFoundError:
             # User not exist in firebase
+            app.logger.warning(
+                "UserVerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=UserNotExists",
+                data
+            )
             return jsonify({"message": "User with this phone does not exists"}), 404
 
     except Exception as e:
+        app.logger.error(
+            "UserVerifyCodeAndLoginWithPhoneException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Login failed", "details": str(e)}), 500
 

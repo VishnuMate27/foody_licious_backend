@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify, session, current_app
+import traceback
+from flask import Blueprint, app, request, jsonify, session, current_app
 from app.models.user import User
 from app.utils.decorators import login_required, admin_required
 from firebase_admin import auth as firebase_auth
@@ -20,6 +21,7 @@ def get_profile():
         user = User.find_by_id(user_id)
         
         if not user:
+            app.logger.warning("getUserProfileFailed | reason=UserNotFound")
             return jsonify({"error": "User not found"}), 404
         
         # Remove sensitive data
@@ -33,10 +35,19 @@ def get_profile():
             "email_verified": user.get('email_verified', False),
             "last_login": user.get('last_login')
         }
+        app.logger.info(
+            "getUserProfileSuccess | userId=%s",
+            user_id
+        )
         
         return jsonify({"user": user_data}), 200
         
     except Exception as e:
+        app.logger.error(
+            "getUserProfileException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Failed to get profile", "details": str(e)}), 500
 
 @user_bp.route('/profile', methods=['PUT'])
@@ -49,6 +60,9 @@ def update_profile():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    f"UpdateUserProfileFailed | reason={field}Required",
+                )
                 return jsonify({"error": f"{field} is required"}), 400
                     
         allowed_fields = ['name', 'email','phone', 'address']
@@ -63,6 +77,9 @@ def update_profile():
         # Update user
         success = User.update_user(id, update_data)
         if not success:
+            app.logger.warning(
+                "UpdateUserProfileFailed | reason=FailedToUpdateUserProfile",
+            )
             return jsonify({"error": "Failed to update profile"}), 500
         
         # Get updated user data
@@ -76,12 +93,21 @@ def update_profile():
             "address": user['address']
         }
         
+        app.logger.info(
+            "UpdateUserProfileSuccess | id=%s",
+            id
+        )
         return jsonify({
             "message": "Profile updated successfully",
             "user": user_data
         }), 200
         
     except Exception as e:
+        app.logger.error(
+            "UpdateUserProfileException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Failed to update profile", "details": str(e)}), 500
 
 @user_bp.route("/delete_user", methods=["POST"])
@@ -92,6 +118,9 @@ def delete_user():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
+                app.logger.warning(
+                    f"DeleteUserFailed | reason={field}Required",
+                )
                 return jsonify({"error": f"{field} is required"}), 400
             
         id = data['id'] # same for Firebase and MongoDB   
@@ -103,8 +132,16 @@ def delete_user():
         try:
             firebase_auth.delete_user(id)
         except firebase_auth.UserNotFoundError:
+            app.logger.warning(
+                "DeleteUserFailed | reason=UserNotFoundInFirebase",
+            )
             return jsonify({"error": "Firebase user not found"}), 404
         except Exception as e:
+            app.logger.error(
+                "DeleteUserException | error=%s\n%s",
+                str(e),
+                traceback.format_exc()
+            )
             return jsonify({"error": f"Firebase deletion failed: {str(e)}"}), 500
 
         # --- Step 3: Delete from MongoDB ---
@@ -114,14 +151,26 @@ def delete_user():
             # MongoDB deletion failed → rollback: reinsert the user_doc
             if user_doc:
                 User.save(user_doc)
+            app.logger.warning(
+                "DeleteUserFailed | reason=FailedToDeleteFromMongoDB",
+            )    
             return jsonify({
                 "error": f"Failed to delete user {id} from MongoDB. Rolled back Firebase deletion."
             }), 500
 
         # --- Both deletions succeeded ---
+        app.logger.info(
+            "DeleteUserSuccess | id=%s",
+            id
+        )
         return jsonify({"message": f"Successfully deleted user {id}"}), 200
 
     except Exception as e:
+        app.logger.error(
+            "DeleteUserException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": str(e)}), 500
     
 @user_bp.route('/change-password', methods=['PUT'])

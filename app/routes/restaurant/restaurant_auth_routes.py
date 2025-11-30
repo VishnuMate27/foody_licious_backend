@@ -36,22 +36,22 @@ def register():
         # Validate email format
         if not Restaurant.validate_email(email):
             app.logger.warning(
-                    "RestaurantRegistrationFailed | email=%s | reason=InvalidEmailFormat",
-                    email
+                "RestaurantRegistrationFailed | email=%s | reason=InvalidEmailFormat",
+                email
             )
             return jsonify({"error": "Invalid email format"}), 400
         
         # Check if restaurant already exists
         if Restaurant.find_by_id(id):
             app.logger.warning(
-                    "RestaurantRegistrationFailed | id=%s | reason=RestaurantAlreadyExists",
-                    id
+                "RestaurantRegistrationFailed | id=%s | reason=RestaurantAlreadyExists",
+                id
             )
             return jsonify({"error": "Restaurant with this id already exists"}), 409
         
         restaurant = Restaurant(id, email, ownerName, phone, authProvider, photoUrl)
         restaurant_id = restaurant.save()
-        app.logger.info("Restaurant registered successfully | restaurantId={id}")
+        app.logger.info("RestaurantRegistrationSuccess | restaurantId={id}")
         return jsonify({
             "message": "Restaurant registered successfully",
             "restaurant": {
@@ -134,7 +134,7 @@ def send_verification_code_for_registration():
             }), 201
         else:
             app.logger.warning(
-                "RestaurantSendVerificationCodeForRegistrationFailed | reason={response.status_code}",
+                f"RestaurantSendVerificationCodeForRegistrationFailed | reason={response.status_code}",
             )    
             return jsonify({
                 "error": "Failed to send verification code",
@@ -160,7 +160,7 @@ def verify_code_and_register_with_phone():
         for field in required_fields:
             if field not in data or not data[field]:
                 app.logger.warning(
-                    "VerifyCodeAndRegisterWithPhoneFailed | field=%s | payload=%s",
+                    "RestaurantVerifyCodeAndRegisterWithPhoneFailed | field=%s | payload=%s",
                     field, data
                 )
                 return jsonify({"error": f"{field} is required"}), 400
@@ -173,7 +173,7 @@ def verify_code_and_register_with_phone():
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
             app.logger.warning(
-                "VerifyCodeAndRegisterWithPhoneFailed | reason=ItemIdRequired",
+                "RestaurantVerifyCodeAndRegisterWithPhoneFailed | reason=ItemIdRequired",
             )
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
@@ -194,7 +194,7 @@ def verify_code_and_register_with_phone():
 
         if response.status_code != 200 or result.get("status") != "approved":
             app.logger.warning(
-                "VerifyCodeAndRegisterWithPhoneFailed | reason=PhoneVerificationFailed",
+                "RestaurantVerifyCodeAndRegisterWithPhoneFailed | reason=PhoneVerificationFailed",
             )
             return jsonify({
                 "error": "Phone verification failed",
@@ -204,7 +204,7 @@ def verify_code_and_register_with_phone():
         # ✅ Step 2: Check if restaurant already exists in MongoDB
         if Restaurant.find_by_phone(phone):
             app.logger.warning(
-                "VerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                "RestaurantVerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
                 data
             )            
             return jsonify({"error": "Restaurant with this phone already exists"}), 409
@@ -219,7 +219,7 @@ def verify_code_and_register_with_phone():
                 saved_id = existing_user.uid
 
             app.logger.warning(
-                "VerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
+                "RestaurantVerifyCodeAndRegisterWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInFirebase",
                 data
             )  
             return jsonify({
@@ -243,7 +243,7 @@ def verify_code_and_register_with_phone():
             restaurant = Restaurant(fb_user.uid, None, ownerName, phone, authProvider, None)
             saved_id = restaurant.save()
             app.logger.info(
-                "VerifyCodeAndRegisterWithPhoneSuccess",
+                "RestaurantVerifyCodeAndRegisterWithPhoneSuccess",
             )
             return jsonify({
                 "message": "User registered successfully with phone",
@@ -258,7 +258,7 @@ def verify_code_and_register_with_phone():
 
     except Exception as e:
         app.logger.error(
-            "VerifyCodeAndRegisterWithPhoneException | error=%s\n%s",
+            "RestaurantVerifyCodeAndRegisterWithPhoneException | error=%s\n%s",
             str(e),
             traceback.format_exc()
         )
@@ -344,6 +344,11 @@ def login():
         }), 200
 
     except Exception as e:
+        app.logger.error(
+            "RestaurantLoginException | error=%s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
         return jsonify({"error": "Login failed", "details": str(e)}), 500
 
 @restaurant_auth_bp.route('/sendVerificationCodeForLogin', methods=['POST'])
@@ -432,7 +437,7 @@ def verify_code_and_login_with_phone():
         for field in required_fields:
             if field not in data or not data[field]:
                 app.logger.warning(
-                    "VerifyCodeAndLoginWithPhoneFailed | field=%s | payload=%s",
+                    "RestaurantVerifyCodeAndLoginWithPhoneFailed | field=%s | payload=%s",
                     field, data
                 )
                 return jsonify({"error": f"{field} is required"}), 400
@@ -444,7 +449,7 @@ def verify_code_and_login_with_phone():
         # Validate phone format (basic E.164 check)
         if not phone.startswith('+') or not phone[1:].isdigit():
             app.logger.warning(
-                "VerifyCodeAndLoginWithPhoneFailed | reason=ItemIdRequired",
+                "RestaurantVerifyCodeAndLoginWithPhoneFailed | reason=InvalidPhoneNumber",
             )            
             return jsonify({"error": "Invalid phone number format. Use E.164 format (e.g. +919876543210)"}), 400
 
@@ -465,7 +470,7 @@ def verify_code_and_login_with_phone():
 
         if response.status_code != 200 or result.get("status") != "approved":
             app.logger.warning(
-                "VerifyCodeAndLoginWithPhoneFailed | reason=PhoneVerificationFailed",
+                "RestaurantVerifyCodeAndLoginWithPhoneFailed | reason=PhoneVerificationFailed",
             )
             return jsonify({
                 "error": "Phone verification failed",
@@ -475,7 +480,7 @@ def verify_code_and_login_with_phone():
         # ✅ Step 2: Check if user not exists in MongoDB
         if not Restaurant.find_by_phone(phone):
             app.logger.warning(
-                "VerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
+                "RestaurantVerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantAlreadyExistInMongoDB",
                 data
             )
             return jsonify({"error": "Restaurant with this phone does not exists in MongoDB"}), 404
@@ -487,7 +492,7 @@ def verify_code_and_login_with_phone():
                 restaurant = Restaurant.find_by_id(existing_user.uid)
                 Restaurant.update_last_login(restaurant["_id"])    
             app.logger.info(
-                "VerifyCodeAndLoginWithPhoneSuccess",
+                "RestaurantVerifyCodeAndLoginWithPhoneSuccess",
             )  
             return jsonify({
                 "message": "Restaurant login successful!",
@@ -510,14 +515,14 @@ def verify_code_and_login_with_phone():
         except firebase_auth.UserNotFoundError:
             # User not exist in firebase
             app.logger.warning(
-                "VerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantNotExists",
+                "RestaurantVerifyCodeAndLoginWithPhoneFailed | payload=%s | reason=RestaurantNotExists",
                 data
             )
             return jsonify({"message": "Restaurant with this phone does not exists"}), 404
 
     except Exception as e:
         app.logger.error(
-            "VerifyCodeAndLoginWithPhoneException | error=%s\n%s",
+            "RestaurantVerifyCodeAndLoginWithPhoneException | error=%s\n%s",
             str(e),
             traceback.format_exc()
         )
