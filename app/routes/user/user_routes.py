@@ -21,7 +21,7 @@ def get_profile():
         user = User.find_by_id(user_id)
         
         if not user:
-            app.logger.warning("getUserProfileFailed | reason=UserNotFound")
+            current_app.logger.warning("getUserProfileFailed | reason=UserNotFound")
             return jsonify({"error": "User not found"}), 404
         
         # Remove sensitive data
@@ -35,7 +35,7 @@ def get_profile():
             "email_verified": user.get('email_verified', False),
             "last_login": user.get('last_login')
         }
-        app.logger.info(
+        current_app.logger.info(
             "getUserProfileSuccess | userId=%s",
             user_id
         )
@@ -43,7 +43,7 @@ def get_profile():
         return jsonify({"user": user_data}), 200
         
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "getUserProfileException | error=%s\n%s",
             str(e),
             traceback.format_exc()
@@ -60,7 +60,7 @@ def update_profile():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
-                app.logger.warning(
+                current_app.logger.warning(
                     f"UpdateUserProfileFailed | reason={field}Required",
                 )
                 return jsonify({"error": f"{field} is required"}), 400
@@ -77,7 +77,7 @@ def update_profile():
         # Update user
         success = User.update_user(id, update_data)
         if not success:
-            app.logger.warning(
+            current_app.logger.warning(
                 "UpdateUserProfileFailed | reason=FailedToUpdateUserProfile",
             )
             return jsonify({"error": "Failed to update profile"}), 500
@@ -93,7 +93,7 @@ def update_profile():
             "address": user['address']
         }
         
-        app.logger.info(
+        current_app.logger.info(
             "UpdateUserProfileSuccess | id=%s",
             id
         )
@@ -103,7 +103,7 @@ def update_profile():
         }), 200
         
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "UpdateUserProfileException | error=%s\n%s",
             str(e),
             traceback.format_exc()
@@ -118,7 +118,7 @@ def delete_user():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
-                app.logger.warning(
+                current_app.logger.warning(
                     f"DeleteUserFailed | reason={field}Required",
                 )
                 return jsonify({"error": f"{field} is required"}), 400
@@ -132,12 +132,12 @@ def delete_user():
         try:
             firebase_auth.delete_user(id)
         except firebase_auth.UserNotFoundError:
-            app.logger.warning(
+            current_app.logger.warning(
                 "DeleteUserFailed | reason=UserNotFoundInFirebase",
             )
             return jsonify({"error": "Firebase user not found"}), 404
         except Exception as e:
-            app.logger.error(
+            current_app.logger.error(
                 "DeleteUserException | error=%s\n%s",
                 str(e),
                 traceback.format_exc()
@@ -151,7 +151,7 @@ def delete_user():
             # MongoDB deletion failed → rollback: reinsert the user_doc
             if user_doc:
                 User.save(user_doc)
-            app.logger.warning(
+            current_app.logger.warning(
                 "DeleteUserFailed | reason=FailedToDeleteFromMongoDB",
             )    
             return jsonify({
@@ -159,14 +159,14 @@ def delete_user():
             }), 500
 
         # --- Both deletions succeeded ---
-        app.logger.info(
+        current_app.logger.info(
             "DeleteUserSuccess | id=%s",
             id
         )
         return jsonify({"message": f"Successfully deleted user {id}"}), 200
 
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "DeleteUserException | error=%s\n%s",
             str(e),
             traceback.format_exc()

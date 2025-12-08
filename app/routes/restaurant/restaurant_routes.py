@@ -26,7 +26,7 @@ def get_profile():
         restaurant = Restaurant.find_by_id(restaurant_id)
         
         if not restaurant:
-            app.logger.warning("getRestaurantProfileFailed | reason=RestaurantNotFound")
+            current_app.logger.warning("getRestaurantProfileFailed | reason=RestaurantNotFound")
             return jsonify({"error": "Restaurant not found"}), 404
         
         # Remove sensitive data
@@ -40,7 +40,7 @@ def get_profile():
             # "email_verified": restaurant.get('email_verified', False),
             "last_login": restaurant.get('last_login')
         }
-        app.logger.info(
+        current_app.logger.info(
             "getRestaurantProfileSuccess | restaurantId=%s",
             restaurant_id
         )
@@ -48,7 +48,7 @@ def get_profile():
         return jsonify({"restaurant": restaurant_data}), 200
         
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "getRestaurantProfileException | error=%s\n%s",
             str(e),
             traceback.format_exc()
@@ -65,7 +65,7 @@ def update_profile():
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
-                app.logger.warning(
+                current_app.logger.warning(
                     f"UpdateRestaurantProfileFailed | reason={field}Required",
                 )
                 return jsonify({"error": f"{field} is required"}), 400
@@ -82,7 +82,7 @@ def update_profile():
         # Update restaurant
         success = Restaurant.update_restaurant(id, update_data)
         if not success:
-            app.logger.warning(
+            current_app.logger.warning(
                 "UpdateRestaurantProfileFailed | reason=FailedToUpdateRestaurantProfile",
             )
             return jsonify({"error": "Failed to update profile"}), 500
@@ -102,7 +102,7 @@ def update_profile():
             "menuItems": restaurant['menuItems'],
         }
         
-        app.logger.info(
+        current_app.logger.info(
             "UpdateRestaurantProfileSuccess | id=%s",
             id
         )
@@ -112,76 +112,76 @@ def update_profile():
         }), 200
         
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "UpdateRestaurantProfileException | error=%s\n%s",
             str(e),
             traceback.format_exc()
         )
         return jsonify({"error": "Failed to update profile", "details": str(e)}), 500
 
-@restaurant_bp.route("/delete_restaurant", methods=["POST"])
+@restaurant_bp.route("/delete_restaurant", methods=["DELETE"])
 def delete_restaurant():
+    ### TODO: Add Delete Restaurant Folder from S3 Functionality
     try:
         data = request.get_json()
-        
+
         required_fields = ['id']
         for field in required_fields:
             if field not in data or not data[field]:
-                app.logger.warning(
+                current_app.logger.warning(
                     f"DeleteRestaurantFailed | reason={field}Required",
                 )
                 return jsonify({"error": f"{field} is required"}), 400
-            
-        id = data['id'] # same for Firebase and MongoDB   
-        ## TODO: Add Function for Deleting Restaurant Storage Folder from AWS        
-        # --- Step 1: Backup MongoDB restaurant document (for rollback if needed) ---
+
+        id = data['id']
+
+        # Backup MongoDB document
         restaurant_doc = Restaurant.find_by_id(id)
 
-        # --- Step 2: Delete from Firebase Authentication ---
+        # --- Step 1: Delete from Firebase ---
         try:
-            firebase_auth.delete_restaurant(id)
-        except firebase_auth.RestaurantNotFoundError:
-            app.logger.warning(
-                "DeleteRestaurantFailed | reason=RestaurantNotFoundInFirebase",
+            firebase_auth.delete_user(id)
+        except firebase_auth.UserNotFoundError:
+            current_app.logger.warning(
+                "DeleteRestaurantFailed | reason=UserNotFoundInFirebase",
             )
-            return jsonify({"error": "Firebase restaurant not found"}), 404
+            return jsonify({"error": "Firebase user not found"}), 404
         except Exception as e:
-            app.logger.error(
+            current_app.logger.error(
                 "DeleteRestaurantException | error=%s\n%s",
                 str(e),
                 traceback.format_exc()
             )
             return jsonify({"error": f"Firebase deletion failed: {str(e)}"}), 500
 
-        # --- Step 3: Delete from MongoDB ---
+        # --- Step 2: Delete from MongoDB ---
         delete_response = Restaurant.delete_restaurant(id)
 
         if not delete_response:
-            # MongoDB deletion failed → rollback: reinsert the restaurant_doc
             if restaurant_doc:
                 Restaurant.save(restaurant_doc)
-            app.logger.warning(
+
+            current_app.logger.warning(
                 "DeleteRestaurantFailed | reason=FailedToDeleteFromMongoDB",
-            )    
+            )
             return jsonify({
                 "error": f"Failed to delete restaurant {id} from MongoDB. Rolled back Firebase deletion."
             }), 500
 
-        # --- Both deletions succeeded ---
-        app.logger.info(
-            "DeleteRestaurantSuccess | id=%s",
-            id
+        current_app.logger.info(
+            f"DeleteRestaurantSuccess | id={id}"
         )
+
         return jsonify({"message": f"Successfully deleted restaurant {id}"}), 200
 
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "DeleteRestaurantException | error=%s\n%s",
             str(e),
             traceback.format_exc()
         )
         return jsonify({"error": str(e)}), 500
-    
+
 @restaurant_bp.route('/change-password', methods=['PUT'])
 @login_required
 def change_password():
@@ -259,7 +259,7 @@ def upload_restaurant_profile_picture():
 
     # ---- Required field checks ----
     if "image" not in request.files:
-        app.logger.warning(
+        current_app.logger.warning(
             "UploadRestaurantProfilePictureFailed | reason=ImageFileRequired",
         )
         return jsonify({"error": "Image file is required."}), 400
@@ -270,22 +270,22 @@ def upload_restaurant_profile_picture():
     sub_folder = request.form.get("sub_folder", "").strip()
 
     if not restaurant_id:
-        app.logger.warning(
+        current_app.logger.warning(
             "UploadRestaurantProfilePictureFailed | reason=RestuarantIdRequired",
         )
         return jsonify({"error": "restaurant_id is required."}), 400
     if not folder:
-        app.logger.warning(
+        current_app.logger.warning(
             "UploadRestaurantProfilePictureFailed | reason=FolderRequired",
         )
         return jsonify({"error": "folder is required."}), 400
     if image.filename == "":
-        app.logger.warning(
+        current_app.logger.warning(
             "UploadRestaurantProfilePictureFailed | reason=NoSelectedImageFile",
         )
         return jsonify({"error": "No selected image file."}), 400
     if not allowed_file(image.filename):
-        app.logger.warning(
+        current_app.logger.warning(
             "UploadRestaurantProfilePictureFailed | reason=UnsupportedFileType",
         )
         return jsonify({"error": "Unsupported file type."}), 400
@@ -328,7 +328,7 @@ def upload_restaurant_profile_picture():
         update_data = {"photoUrl": file_url}
         success = Restaurant.update_restaurant(restaurant_id, update_data)
         if not success:
-            app.logger.warning(
+            current_app.logger.warning(
                 "UploadRestaurantProfilePictureFailed | reason=FailedToUpdateRestaurantImageURL",
             )
             return jsonify({"error": "Failed to update restaurant image URL."}), 501
@@ -348,7 +348,7 @@ def upload_restaurant_profile_picture():
             "menuItems": restaurant["menuItems"],
         }
 
-        app.logger.info(
+        current_app.logger.info(
             "UploadRestaurantProfilePictureSuccess | restaurantId=%s",
             restaurant_id
         ) 
@@ -361,7 +361,7 @@ def upload_restaurant_profile_picture():
 
     except (NoCredentialsError, ClientError) as e:
         print(f"S3 Upload Error: {e}")
-        app.logger.error(
+        current_app.logger.error(
             "UploadRestaurantProfilePictureException | error=%s\n%s",
             str(e),
             traceback.format_exc()
@@ -380,12 +380,12 @@ def remove_restaurant_profile_picture():
     sub_folder = request.form.get("sub_folder", "").strip()
 
     if not restaurant_id:
-        app.logger.warning(
+        current_app.logger.warning(
             "RemoveRestaurantProfilePictureFailed | reason=RestaurantIdRequired",
         )
         return jsonify({"error": "restaurant_id is required."}), 400
     if not folder:
-        app.logger.warning(
+        current_app.logger.warning(
             "RemoveRestaurantProfilePictureFailed | reason=FolderRequired",
         )
         return jsonify({"error": "folder is required."}), 400
@@ -413,7 +413,7 @@ def remove_restaurant_profile_picture():
                     raise e  # Some other S3 error, not "Not Found"
 
         if not deleted:
-            app.logger.warning(
+            current_app.logger.warning(
                 "RemoveRestaurantProfilePictureFailed | reason=ProfilePictureNotFound",
             )
             return jsonify({"error": "No profile picture found to delete."}), 404
@@ -422,7 +422,7 @@ def remove_restaurant_profile_picture():
         update_data = {"photoUrl": ""}
         success = Restaurant.update_restaurant(restaurant_id, update_data)
         if not success:
-            app.logger.warning(
+            current_app.logger.warning(
                 "RemoveRestaurantProfilePictureFailed | reason=FailedToUpdateRestaurantRecord",
             )
             return jsonify({"error": "Failed to update restaurant record."}), 501
@@ -442,7 +442,7 @@ def remove_restaurant_profile_picture():
             "menuItems": restaurant["menuItems"],
         }
 
-        app.logger.info(
+        current_app.logger.info(
             "RemoveRestaurantProfilePictureSuccess | restaurantId=%s",
             restaurant_id
         )
@@ -454,7 +454,7 @@ def remove_restaurant_profile_picture():
 
     except (NoCredentialsError, ClientError) as e:
         print(f"S3 Deletion Error: {e}")
-        app.logger.error(
+        current_app.logger.error(
             "RemoveRestaurantProfilePictureException | error=%s\n%s",
             str(e),
             traceback.format_exc()
@@ -488,7 +488,7 @@ def list_restaurants():
         # Get total count
         total_restaurants = mongo.db.restaurants.count_documents({})
         
-        app.logger.info(
+        current_app.logger.info(
             "ListRestaurantsSuccess | restaurantId=%s",
             restaurant['id']
         ) 
@@ -503,7 +503,7 @@ def list_restaurants():
         }), 200
         
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "ListRestaurantsException | error=%s\n%s",
             str(e),
             traceback.format_exc()
