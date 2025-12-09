@@ -26,30 +26,35 @@ def get_all_items_in_restaurants_of_users_city():
         
         # Validate pagination parameters
         if page < 1:
-            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page number must be greater than 0")
+            current_app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page number must be greater than 0")
             return jsonify({"error": "Page number must be greater than 0"}), 400
         if page_size < 1:
-            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size must be greater than 0")            
+            current_app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size must be greater than 0")            
             return jsonify({"error": "Page size must be greater than 0"}), 400
         if page_size > 100:  # Limit maximum page size
-            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size cannot exceed 100")
+            current_app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | Page size cannot exceed 100")
             return jsonify({"error": "Page size cannot exceed 100"}), 400
         
         if not user_id:
-            app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | user_id is required")
+            current_app.logger.warning(f"Failed to Get all items in restaurants of users city | userId={user_id} | user_id is required")
             return jsonify({"error": "user_id is required"}), 400
 
         # Get the user's city location    
         user = User.find_by_id(user_id)
         
-        city = user['address'] 
-        # log()
+        city = user['address']['city'] 
+        print(city)
         
         # Find out all restaurants in user's city
+        restaurants = Restaurant.find_by_city(city);
         # Get the list of menus from these restaurants
-        # Show it to user  
+        menuItems = []
+        for restaurant in restaurants:
+            menuItems.extend(MenuItem.find_items_by_restaurant_id(restaurant['_id']))
+        # Show it to user
+        return menuItems 
     except Exception as e:
-        app.logger.error(
+        current_app.logger.error(
             "Error in get all items in restaurants of users city: %s\n%s", 
             str(e),
             traceback.format_exc()

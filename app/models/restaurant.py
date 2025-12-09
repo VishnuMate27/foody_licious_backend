@@ -84,6 +84,14 @@ class Restaurant:
         return mongo.db.restaurants.find_one({"_id": restaurant_id})
     
     @staticmethod
+    def find_by_city(city):
+        """Find restaurant by city"""
+        restaurants = list(
+            mongo.db.restaurants.find({"address.city": city})
+        )
+        return restaurants
+    
+    @staticmethod
     def validate_email(email):
         """Validate email format"""
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
