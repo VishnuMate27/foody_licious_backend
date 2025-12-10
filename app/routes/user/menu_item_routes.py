@@ -46,13 +46,34 @@ def get_all_items_in_restaurants_of_users_city():
         print(city)
         
         # Find out all restaurants in user's city
-        restaurants = Restaurant.find_by_city(city);
-        # Get the list of menus from these restaurants
-        menuItems = []
-        for restaurant in restaurants:
-            menuItems.extend(MenuItem.find_items_by_restaurant_id(restaurant['_id']))
+        restaurants = Restaurant.find_by_city(city)
+        restaurant_ids = [r["_id"] for r in restaurants]
+
+        # Count total items
+        total_items = MenuItem.find_items_by_restaurant_ids(restaurant_ids, count_only=True)
+        
+        total_pages = (total_items + page_size - 1) // page_size
+        # Calculate skip and limit for pagination
+        skip = (page - 1) * page_size
+        
+        # Fetch paginated menu items
+        items_cursor = MenuItem.find_items_by_restaurant_ids(restaurant_ids, skip=skip, limit=page_size)
+
+        items = list(items_cursor)
+        
         # Show it to user
-        return menuItems 
+        return jsonify({
+            "message": "Fetched menu items successfully",
+            "menuItems": items,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }), 200 
     except Exception as e:
         current_app.logger.error(
             "Error in get all items in restaurants of users city: %s\n%s", 
