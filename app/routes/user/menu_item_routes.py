@@ -43,7 +43,6 @@ def get_all_items_in_restaurants_of_users_city():
         user = User.find_by_id(user_id)
         
         city = user['address']['city'] 
-        print(city)
         
         # Find out all restaurants in user's city
         restaurants = Restaurant.find_by_city(city)
@@ -61,6 +60,15 @@ def get_all_items_in_restaurants_of_users_city():
 
         items = list(items_cursor)
         
+        # Fetch corresponding restaurant name
+        for item in items:
+            restaurant = Restaurant.find_by_id(item['restaurantId'])
+            item['restaurantName'] = restaurant['name']
+        
+        current_app.logger.info(
+            "getAllItemsInRestaurantsOfUsersCitySuccess | user_id=%s",
+            user_id
+        )
         # Show it to user
         return jsonify({
             "message": "Fetched menu items successfully",
