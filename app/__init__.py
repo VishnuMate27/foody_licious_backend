@@ -76,10 +76,8 @@ def create_app():
     from app.routes.user.restaurant_routes import user_restaurant_bp
     app.register_blueprint(user_restaurant_bp, url_prefix="/api/users/restaurant")
     
-    # from app.routes.product_routes import product_bp
-    # app.register_blueprint(product_bp, url_prefix="/api/products")
-    # from app.routes.cart_routes import cart_bp
-    # app.register_blueprint(cart_bp, url_prefix="/api/cart")
+    from app.routes.user.cart_routes import user_cart_bp
+    app.register_blueprint(user_cart_bp, url_prefix="/api/users/cart")
     # from app.routes.order_routes import order_bp
     # app.register_blueprint(order_bp, url_prefix="/api/order")
     # from app.routes.admin_routes import admin_bp
