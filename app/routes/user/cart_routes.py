@@ -189,7 +189,7 @@ def increaseItemQuantity():
     try:
         data = request.get_json()
         
-        required_fields = ['cartId','menuItemId','userId']
+        required_fields = ['menuItemId','userId']
         for field in required_fields:
             if field not in data or not data[field]:
                 current_app.logger.warning(
@@ -198,7 +198,7 @@ def increaseItemQuantity():
                 )
                 return jsonify({"error": f"{field} is required"}), 400
             
-        cartId = data['cartId'].strip()
+        # cartId = data['cartId'].strip()
         menuItemId = data['menuItemId'].strip()
         userId = data['userId'].strip()
         
@@ -210,10 +210,11 @@ def increaseItemQuantity():
         
         if menuItem['availableQuantity'] < 1:
             current_app.logger.warning("IncreaseCartItemQuantityFailed | id=%s | userId=%s | reason=MenuItemIsOutOfStock")
-            return jsonify({"error": "Menu Item is currently Out of Stock!", "cartId": cartId}), 500      
+            return jsonify({"error": "Menu Item is currently Out of Stock!", "userId": userId}), 409      
         
         # Check if cart exist for this user  
-        cart = Cart.find_cart_by_id(cartId)
+        cart = Cart.find_cart_by_userId(userId)
+        cartId = cart['id']
         if not cart:
             # If Cart not exist
             current_app.logger.warning(
@@ -229,6 +230,7 @@ def increaseItemQuantity():
                     itemExists = True
                     existing_item['quantity'] += 1
                     existing_item['totalPrice'] += existing_item['price']
+                    founded_item = existing_item
                     break
             if not itemExists:
                 # If item not exist
@@ -248,12 +250,22 @@ def increaseItemQuantity():
             
             if success:
                 # Get updated menuItem data
+                # Get menu item details and restaurant name details
                 updated_cart = Cart.find_cart_by_id(cart['id'])
+                updated_item = None
+                # Check menuItem exist in this cart  
+                for existing_item in updated_cart['items']:
+                    if existing_item['menuItemId'] == menuItemId:
+                        menuItem = MenuItem.find_item_by_id(existing_item["menuItemId"])
+                        restaurant = Restaurant.find_by_id(menuItem["restaurantId"])
+                        menuItem['restaurantName'] = restaurant['name']
+                        existing_item['menuItem'] = menuItem
+                        updated_item = existing_item
                 current_app.logger.info(
                     "IncreaseCartItemQuantitySuccess | id=%s | userId=%s",
                     cart["id"], userId
                 )
-                return jsonify({"message": "Item quantity increased successfully!", "cart": updated_cart}), 200    
+                return jsonify({"message": "Item quantity increased successfully!", "cartItem": updated_item}), 200    
     except Exception as e:
         current_app.logger.error(
             "IncreaseCartItemQuantityException | error=%s\n%s",
@@ -268,7 +280,7 @@ def decreaseItemQuantity():
     try:
         data = request.get_json()
         
-        required_fields = ['cartId','menuItemId','userId']
+        required_fields = ['menuItemId','userId']
         for field in required_fields:
             if field not in data or not data[field]:
                 current_app.logger.warning(
@@ -277,7 +289,7 @@ def decreaseItemQuantity():
                 )
                 return jsonify({"error": f"{field} is required"}), 400
             
-        cartId = data['cartId'].strip()
+        # cartId = data['cartId'].strip()
         menuItemId = data['menuItemId'].strip()
         userId = data['userId'].strip()
         
@@ -293,7 +305,8 @@ def decreaseItemQuantity():
         #     return jsonify({"error": "Menu Item is Out of Stock!", "cartId": cartId}), 500      
         
         # Check if cart exist for this user  
-        cart = Cart.find_cart_by_id(cartId)
+        cart = Cart.find_cart_by_userId(userId)
+        cartId = cart['id']
         if not cart:
             # If Cart not exist
             current_app.logger.warning(
@@ -312,7 +325,7 @@ def decreaseItemQuantity():
                     existing_item['quantity'] -= 1
                     existing_item['totalPrice'] -= existing_item['price']
                 else:
-                    cart['items'].remove(existing_item)
+                    cart['items'].remove(existing_item) 
                 break        
         if not itemExists:
             # If item not exist
@@ -330,7 +343,7 @@ def decreaseItemQuantity():
                     "DecreaseCartItemQuantityFailed | id=%s | userId=%s",
                     cartId, userId
                 )
-                return jsonify({"message": "Item quantity decreased successfully! Cart Deleted!", "cartId": cartId}), 200 
+                return jsonify({"message": "Item quantity decreased successfully! Cart Deleted!", "cartItem": None}), 200 
         else:        
             # Calculate total amount
             totalAmount = 0                                                                                                                                             
@@ -342,12 +355,21 @@ def decreaseItemQuantity():
             
         if success:
             # Get updated menuItem data
+            updated_item = None
+            # Check menuItem exist in this cart  
             updated_cart = Cart.find_cart_by_id(cart['id'])
+            for existing_item in updated_cart['items']:
+                if existing_item['menuItemId'] == menuItemId:
+                    menuItem = MenuItem.find_item_by_id(existing_item["menuItemId"])
+                    restaurant = Restaurant.find_by_id(menuItem["restaurantId"])
+                    menuItem['restaurantName'] = restaurant['name']
+                    existing_item['menuItem'] = menuItem
+                    updated_item = existing_item           
             current_app.logger.info(
                 "DecreaseCartItemQuantitySuccess | id=%s | userId=%s",
                 cart["id"], userId
             )
-            return jsonify({"message": "Item quantity decreased successfully!", "cart": updated_cart}), 200    
+            return jsonify({"message": "Item quantity decreased successfully!", "cartItem": updated_item}), 200    
         
     
     except Exception as e:
@@ -356,14 +378,14 @@ def decreaseItemQuantity():
             str(e),
             traceback.format_exc()
         )
-        return jsonify({"error": "Failed to increase cart item quantity", "details": str(e)}), 500  
+        return jsonify({"error": "Failed to decrease cart item quantity", "details": str(e)}), 500  
 
 @user_cart_bp.route('/deleteItem', methods=['DELETE'])
 def delete_Item():
     """delete item from cart""" 
     try:
         data = request.get_json()
-        required_fields = ['cartId','menuItemId','userId']  
+        required_fields = ['menuItemId','userId']  
         for field in required_fields:
             if field not in data or not data[field]:
                 current_app.logger.warning(
@@ -372,14 +394,15 @@ def delete_Item():
                 )
                 return jsonify({"error": f"{field} is required"}), 400 
         
-        cartId = data['cartId'].strip()
+        # cartId = data['cartId'].strip()
         menuItemId = data['menuItemId'].strip()
         userId = data['userId'].strip()
         
         # Check if cart exist for this user
-        cart = Cart.find_cart_by_id(cartId)
+        cart = Cart.find_cart_by_userId(userId)
         # If cart exist
         if cart:
+            cartId = cart
             # Check the item exist in the list
             # if item exist in cart increase its quantity and total price
             itemExists = False
