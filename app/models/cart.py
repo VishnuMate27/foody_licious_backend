@@ -1,9 +1,14 @@
 from datetime import datetime
+from enum import Enum
+from typing import Any
 from bson import ObjectId
 from app import mongo
 from app.utils.mongo_utils import flatten
 from app.utils.serializers import serialize_doc
 
+class CartStatus(Enum):
+    ACTIVE = "ACTIVE"
+    LOCKED = "LOCKED"
 
 class Cart:
     def __init__(self, restaurantId, userId, items):
@@ -11,7 +16,7 @@ class Cart:
         self.userId = userId
         self.items = items
         self.totalAmount = 0
-        self.status = "active"
+        self.status = CartStatus.ACTIVE.value
         self.createdAt = datetime.utcnow()
         self.updatedAt = datetime.utcnow()
         
@@ -37,10 +42,40 @@ class Cart:
         return serialize_doc(cart) if cart else None    
     
     @staticmethod
-    def find_cart_by_userId(userId):
+    def find_cart_by_userId(userId: str,session: Any):
         """Find cart by user id"""
-        cart = mongo.db.carts.find_one({"userId": userId})
+        cart = mongo.db.carts.find_one({"userId": userId},session=session)
         return serialize_doc(cart) if cart else None 
+    
+    @staticmethod
+    def lock_cart(cartId: str,session: Any):
+        """Lock cart"""
+        update_data = {}
+        update_data['status'] = CartStatus.LOCKED.value
+        update_data['updatedAt'] = datetime.utcnow()
+        # Flatten nested fields into dot-notation
+        flattened_data = flatten(update_data)
+        result = mongo.db.carts.update_one(
+            {"_id": ObjectId(cartId)},
+            {"$set": flattened_data},
+            session = session
+        )
+        return result.modified_count > 0
+    
+    @staticmethod
+    def unlock_cart(cartId: str,session: Any):
+        """unlock cart"""
+        update_data = {}
+        update_data['status'] = CartStatus.ACTIVE.value
+        update_data['updatedAt'] = datetime.utcnow()
+        # Flatten nested fields into dot-notation
+        flattened_data = flatten(update_data)
+        result = mongo.db.carts.update_one(
+            {"_id": ObjectId(cartId)},
+            {"$set": flattened_data},
+            session = session
+        )
+        return result.modified_count > 0
     
     @staticmethod
     def update_cart(cartId, update_data):

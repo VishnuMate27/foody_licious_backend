@@ -1,4 +1,5 @@
 import traceback
+from enum import Enum
 from bson import ObjectId
 from flask import Blueprint, current_app, jsonify, request
 from app.models.cart import Cart
@@ -473,16 +474,150 @@ def delete_Item():
         return jsonify({"error": "Failed to remove item from cart", "details": str(e)}), 500
     # Remaining/Still not required: Do not take restaurantId of item internally check belongs to same restaurant of cart
 
-        
-                           
-            
-         
-            
-            
-            
-            
-                    
+# # TODO(5): Make for get cart will be used in continue button 
+# @user_cart_bp.route('/getCart', methods = ['GET'])
+# def get_cart():
+#     """Get cart details"""
+#     try:
+#         # Get userId from query params
+#         userId = request.args.get('userId')
+
+#         if not userId:
+#             current_app.logger.warning(f"Failed to get cart details | userId={userId} | userId is required")
+#             return jsonify({"error": "userId is required"}), 400
                 
-                
+#         cart = Cart.find_cart_by_userId(userId)
+#         if not cart:
+#             current_app.logger.warning(f"Failed to get cart details | userId={userId} | Invalid Request! Cart does not exist (because no item is added).")
+#             return jsonify({"error": "Cart does not exist (because no item is added)."}), 404
         
+#         current_app.logger.info("Fetched cart successfully | userId={userId}")
+#         return jsonify({
+#             "message": "Fetched cart successfully",
+#             "cart": cart,
+#         }), 200
+                         
+#     except Exception as e:
+#         current_app.logger.error(
+#             "Error in get_all_cart_items: %s\n%s",
+#             str(e),
+#             traceback.format_exc()
+#         )
+#         return jsonify({"error": "Failed to get all cart items", "details": str(e)}), 500
+     
+# @user_cart_bp.route('/lockCart', methods = ['PUT'])    
+# def lockCart():
+#     """Lock Items in Cart"""
+#     try:
+#         data = request.get_json()
+        
+#         required_fields = ['userId']
+#         for field in required_fields:
+#             if field not in data or not data[field]:
+#                 current_app.logger.warning(
+#                     "LockCartFailed | field=%s | payload=%s",
+#                     field, data
+#                 )
+#                 return jsonify({"error": f"{field} is required"}), 400
+            
+#         # cartId = data['cartId'].strip()
+#         userId = data['userId'].strip()
+        
+#         # Check if cart exist for this user  
+#         cart = Cart.find_cart_by_userId(userId)
+#         cartId = cart['id']
+#         if not cart:
+#             # If Cart not exist
+#             current_app.logger.warning(
+#                 "LockCartFailed | id=%s | userId=%s | reason=CartNotExists",
+#                 cartId, userId
+#             )
+#             return jsonify({"error": "Invalid Request! Cart not exist.", "cartId": cartId}), 404       
+#         else:                
+#             # Save updated cart
+#             success = Cart.update_cart(cart['id'], {"status": CartStatus.LOCKED})
+#             if success:
+#                 # Check if cart exist for this user  
+#                 cart = Cart.find_cart_by_userId(userId)
+#                 current_app.logger.info(
+#                     "LockCartSuccess | id=%s | userId=%s",
+#                     cart["id"], userId
+#                 )
+#                 return jsonify({"message": "Locked Cart successfully!", "cartId": cartId}), 200    
+#     except Exception as e:
+#         current_app.logger.error(
+#             "LockCartException | error=%s\n%s",
+#             str(e),
+#             traceback.format_exc()
+#         )
+#         return jsonify({"error": "Failed to lock cart!", "details": str(e)}), 500  
+
+# @user_cart_bp.route('/unlockCart', methods = ['PUT'])    
+# def unlockCart():
+#     """Unlock Items in Cart"""
+#     try:
+#         data = request.get_json()
+        
+#         required_fields = ['userId']
+#         for field in required_fields:
+#             if field not in data or not data[field]:
+#                 current_app.logger.warning(
+#                     "UnlockCartFailed | field=%s | payload=%s",
+#                     field, data
+#                 )
+#                 return jsonify({"error": f"{field} is required"}), 400
+            
+#         # cartId = data['cartId'].strip()
+#         userId = data['userId'].strip()
+        
+#         # Check if cart exist for this user  
+#         cart = Cart.find_cart_by_userId(userId)
+#         cartId = cart['id']
+#         if not cart:
+#             # If Cart not exist
+#             current_app.logger.warning(
+#                 "UnlockCartFailed | id=%s | userId=%s | reason=CartNotExists",
+#                 cartId, userId
+#             )
+#             return jsonify({"error": "Invalid Request! Cart not exist.", "cartId": cartId}), 404       
+#         else:                
+#             # Save updated cart
+#             success = Cart.update_cart(cart['id'], {"status": CartStatus.ACTIVE})
+#             if success:
+#                 # Check if cart exist for this user  
+#                 cart = Cart.find_cart_by_userId(userId)
+#                 current_app.logger.info(
+#                     "UnlockCartSuccess | id=%s | userId=%s",
+#                     cart["id"], userId
+#                 )
+#                 return jsonify({"message": "Unlocked Cart successfully!", "cartId": cartId}), 200    
+#     except Exception as e:
+#         current_app.logger.error(
+#             "UnlockCartException | error=%s\n%s",
+#             str(e),
+#             traceback.format_exc()
+#         )
+#         return jsonify({"error": "Failed to unlock cart!", "details": str(e)}), 500  
+        
+
+
+# TODO(2): Add get cart here
+# App Relaunch / App Open
+# Frontend
+# GET /cart
+
+# Backend response includes
+# {
+#   "cartStatus": "LOCKED",
+#   "pendingOrder": {
+#     "orderId": "o1",
+#     "expiresAt": "..."
+#   }
+# }
+
+# Frontend behavior
+
+# If order still valid → show “Resume checkout”
+
+# If expired → cart already unlocked    
         
