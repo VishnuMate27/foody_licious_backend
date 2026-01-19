@@ -26,9 +26,9 @@ class PaymentService:
                 payment = Payment.find_payment_by_orderId(orderId=orderId, session=session)
                 
                 if payment:
-                    if payment["status"] == PaymentStatus.SUCCESS.value:
+                    if payment["paymentStatus"] == PaymentStatus.SUCCESS.value:
                         raise BusinessException("Payment status is already success!")
-                    elif payment["status"] == PaymentStatus.PENDING.value:
+                    elif payment["paymentStatus"] == PaymentStatus.PENDING.value:
                         raise BusinessException("Payment status is already pending! You can retry after old payment window is expired")
                     else:
                         new_payment = Payment(userId= order["userId"] , restaurantId= order["restaurantId"],orderId= order["_id"],finalAmount=order["grandTotalAmount"], paymentStatus=PaymentStatus.PENDING.value , paymentWindowExpireAt= datetime.utcnow() + timedelta(minutes=15))
