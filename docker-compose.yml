@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  api:
+    container_name: foodylicious-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7860:7860"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - foodylicious-net
+
+networks:
+  foodylicious-net:
+    driver: bridge
