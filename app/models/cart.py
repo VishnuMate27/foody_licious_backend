@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 from bson import ObjectId
 from app import mongo
 from app.utils.mongo_utils import flatten
@@ -42,7 +42,7 @@ class Cart:
         return serialize_doc(cart) if cart else None    
     
     @staticmethod
-    def find_cart_by_userId(userId: str,session: Any):
+    def find_cart_by_userId(userId: str,session: Optional[Any]=None):
         """Find cart by user id"""
         cart = mongo.db.carts.find_one({"userId": userId},session=session)
         return serialize_doc(cart) if cart else None 
