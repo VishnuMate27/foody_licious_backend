@@ -2,9 +2,10 @@ import traceback
 from enum import Enum
 from bson import ObjectId
 from flask import Blueprint, current_app, jsonify, request
-from app.models.cart import Cart
+from app.models.cart import Cart, CartStatus
 from app.models.menu_item import MenuItem
 from app.models.restaurant import Restaurant
+from app.services.pricing_service import PricingService
 
 user_cart_bp = Blueprint('cart', __name__)
 
@@ -129,6 +130,15 @@ def add_new_Item():
                 return jsonify({
                     "error": "You can add items from only one restaurant at a time"
                 }), 400
+            # Check if the cart is locked
+            if cart["status"] == CartStatus.LOCKED.value:
+                current_app.logger.warning(
+                    "AddCartItemFailed | restaurantId=%s | userId=%s | reason=CartLocked",
+                    restaurantId, userId
+                )
+                return jsonify({
+                    "error": "You cannot add items while cart is locked!"
+                }), 405
             
             # Check the item exist in the list
             # if item exist in cart increase its quantity and total price
@@ -224,6 +234,15 @@ def increaseItemQuantity():
             )
             return jsonify({"error": "Invalid Request! Cart not exist.", "cartId": cartId}), 404       
         else:
+            # Check if the cart is locked
+            if cart["status"] == CartStatus.LOCKED.value:
+                current_app.logger.warning(
+                    "IncreaseCartItemQuantityFailed | userId=%s | reason=CartLocked",
+                    userId
+                )
+                return jsonify({
+                    "error": "You cannot increase items quantity while cart is locked!"
+                }), 405
             # Check menuItem exist in this cart  
             itemExists = False
             for existing_item in cart['items']:
@@ -314,7 +333,18 @@ def decreaseItemQuantity():
                 "DecreaseCartItemQuantityFailed | id=%s | userId=%s | reason=CartNotExists",
                 cartId, userId
             )
-            return jsonify({"error": "Invalid Request! Cart not exist.", "cartId": cartId}), 404       
+            return jsonify({"error": "Invalid Request! Cart not exist.", "cartId": cartId}), 404  
+          
+        # Check if the cart is locked
+        if cart["status"] == CartStatus.LOCKED.value:
+            current_app.logger.warning(
+                "DecreaseCartItemQuantityFailed | userId=%s | reason=CartLocked",
+                userId
+            )
+            return jsonify({
+                "error": "You cannot decrease items quantity while cart is locked!"
+            }), 405   
+            
         # Check menuItem exist in this cart  
         itemExists = False
         for existing_item in cart['items']:
@@ -403,6 +433,15 @@ def delete_Item():
         cart = Cart.find_cart_by_userId(userId)
         # If cart exist
         if cart:
+            # Check if the cart is locked
+            if cart["status"] == CartStatus.LOCKED.value:
+                current_app.logger.warning(
+                    "CartItemDeleteFailed | userId=%s | reason=CartLocked",
+                    userId
+                )
+                return jsonify({
+                    "error": "You cannot delete item while cart is locked!"
+                }), 405
             cartId = cart
             # Check the item exist in the list
             # if item exist in cart increase its quantity and total price
@@ -474,36 +513,45 @@ def delete_Item():
         return jsonify({"error": "Failed to remove item from cart", "details": str(e)}), 500
     # Remaining/Still not required: Do not take restaurantId of item internally check belongs to same restaurant of cart
 
-# # TODO(5): Make for get cart will be used in continue button 
-# @user_cart_bp.route('/getCart', methods = ['GET'])
-# def get_cart():
-#     """Get cart details"""
-#     try:
-#         # Get userId from query params
-#         userId = request.args.get('userId')
+# Make for get cart will be used in continue button 
+@user_cart_bp.route('/getCartPricingDetails', methods = ['GET'])
+def get_cart_pricing_details():
+    """Get cart pricing details"""
+    try:
+        # Get userId from query params
+        userId = request.args.get('userId')
 
-#         if not userId:
-#             current_app.logger.warning(f"Failed to get cart details | userId={userId} | userId is required")
-#             return jsonify({"error": "userId is required"}), 400
+        if not userId:
+            current_app.logger.warning(f"Failed to get cart pricing details | userId={userId} | userId is required")
+            return jsonify({"error": "userId is required"}), 400
                 
-#         cart = Cart.find_cart_by_userId(userId)
-#         if not cart:
-#             current_app.logger.warning(f"Failed to get cart details | userId={userId} | Invalid Request! Cart does not exist (because no item is added).")
-#             return jsonify({"error": "Cart does not exist (because no item is added)."}), 404
+        cart = Cart.find_cart_by_userId(userId)
+              
+        if not cart:
+            current_app.logger.warning(f"Failed to get cart pricing details | userId={userId} | Invalid Request! Cart does not exist (because no item is added).")
+            return jsonify({"error": "Cart does not exist (because no item is added)."}), 404
         
-#         current_app.logger.info("Fetched cart successfully | userId={userId}")
-#         return jsonify({
-#             "message": "Fetched cart successfully",
-#             "cart": cart,
-#         }), 200
+        # Calculate total amount
+        totalAmount = 0
+        for item in cart['items']:
+            totalAmount += item['totalPrice']
+        
+        result = PricingService.calculate(total_cart_amount=totalAmount)              
+        
+        current_app.logger.info("Fetched cart pricing details successfully | userId={userId}")
+        return jsonify({
+            "message": "Fetched cart pricing details successfully",
+            "cartId": cart['id'],
+            "pricing": result
+        }), 200
                          
-#     except Exception as e:
-#         current_app.logger.error(
-#             "Error in get_all_cart_items: %s\n%s",
-#             str(e),
-#             traceback.format_exc()
-#         )
-#         return jsonify({"error": "Failed to get all cart items", "details": str(e)}), 500
+    except Exception as e:
+        current_app.logger.error(
+            "Error in get_all_cart_items: %s\n%s",
+            str(e),
+            traceback.format_exc()
+        )
+        return jsonify({"error": "Failed to get cart pricing details", "details": str(e)}), 500
      
 # @user_cart_bp.route('/lockCart', methods = ['PUT'])    
 # def lockCart():
