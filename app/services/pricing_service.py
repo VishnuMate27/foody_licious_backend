@@ -12,6 +12,7 @@ class PricingService:
         grand_total = total_cart_amount + gst + platform_fee + delivery
 
         return {
+            "totalCartAmount": round(total_cart_amount, 2),
             "gstCharges": round(gst, 2),
             "platformFees": round(platform_fee, 2),
             "deliveryCharges": delivery,
