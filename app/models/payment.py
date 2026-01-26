@@ -59,10 +59,20 @@ class Payment:
         return str(result.inserted_id)
 
     @staticmethod
-    def find_payment_by_id(paymentId,session: Any):
+    def find_payment_by_id(paymentId,session: Optional[Any] = None):
         """Find payment by payment id"""
         payment = mongo.db.payments.find_one({"_id": ObjectId(paymentId)},session=session)
-        return serialize_doc(payment) if payment else None    
+        return serialize_doc(payment) if payment else None
+    
+    @staticmethod
+    def find_payments_by_orderIds(orderIds):
+        """Find payments by order ids"""
+        cursor = mongo.db.payments.find(
+            {"orderId": {"$in": orderIds}},
+            {"orderId": 1, "paymentStatus": 1}
+        )
+        return list(cursor)
+        
     
     @staticmethod
     def find_payment_by_userId(userId: str,session: Any):

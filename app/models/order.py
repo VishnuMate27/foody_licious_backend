@@ -107,6 +107,43 @@ class Order:
         return serialize_doc(order) if order else None 
     
     @staticmethod
+    def find_orders_by_restaurantId(restaurantId:str, statuses=None, skip=None, limit=None, count_only=False):
+        """
+        Find menuItems by restaurant Id with pagination support
+        Args:
+            restaurantId: ID of the restaurant
+            statuses: List of statuses Ex. ["CONFIRMED", "PREPARING"]
+            skip: Number of documents to skip (for pagination)
+            limit: Maximum number of documents to return (for pagination)
+            count_only: If True, returns only the count of documents
+        Returns:
+            If count_only is True: returns the total count
+            If count_only is False: returns the paginated items
+        """
+        query = {"restaurantId": restaurantId}
+        
+        if statuses:
+            query["status"] = {"$in": statuses}
+        
+        if count_only:
+            return mongo.db.orders.count_documents(query)
+            
+        # Create the base cursor
+        cursor = mongo.db.orders.find(query)
+        
+        # Apply pagination if specified
+        if skip is not None:
+            cursor = cursor.skip(skip)
+        if limit is not None:
+            cursor = cursor.limit(limit)
+            
+        # Add sorting by creation date (newest first)
+        cursor = cursor.sort("createdAt", -1)
+            
+        items = list(cursor)
+        return serialize_doc(items)    
+    
+    @staticmethod
     def update_order(orderId: str, update_data: Any, session: Any):
         """Update order data"""
         update_data['updatedAt'] = datetime.utcnow()

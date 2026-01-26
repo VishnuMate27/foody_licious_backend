@@ -70,6 +70,9 @@ def create_app():
     from app.routes.restaurant.menu_item_routes import restaurant_menu_item_bp
     app.register_blueprint(restaurant_menu_item_bp, url_prefix="/api/restaurants/menuItems")
     
+    from app.routes.restaurant.restaurant_order_routes import restaurant_order_bp
+    app.register_blueprint(restaurant_order_bp, url_prefix="/api/restaurants/order")
+    
     from app.routes.user.menu_item_routes import user_menu_item_bp
     app.register_blueprint(user_menu_item_bp, url_prefix="/api/users/menuItems")
     
