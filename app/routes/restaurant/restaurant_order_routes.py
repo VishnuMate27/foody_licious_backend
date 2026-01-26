@@ -115,7 +115,7 @@ def updateOrderStatus():
             current_app.logger.warning(f"Failed to update orders | restaurantId={restaurantId} | Invalid Request! Restaurant does not exist")
             return jsonify({"error": "Invalid Request! Restaurant does not exist"}), 404
         
-        order = Order.find_by_id(orderId)
+        order = Order.find_order_by_id(orderId)
         if not order:
             current_app.logger.warning(f"Failed to update orders | restaurantId={restaurantId} | Invalid Request! Order does not exist")
             return jsonify({"error": "Invalid Request! Order does not exist"}), 404
@@ -143,10 +143,14 @@ def updateOrderStatus():
             )
             return jsonify({"error": "Failed to update order status."}), 500
         
-        order = Order.find_by_id(orderId)
+        order = Order.find_order_by_id(orderId)
         if not order:
             current_app.logger.warning(f"Failed to update order | restaurantId={restaurantId} | Invalid Request! Failed to fetch order again.")
             return jsonify({"error": "Invalid Request! Failed to fetch order again."}), 500
+        
+        payment = Payment.find_payment_by_orderId(order["id"])
+
+        order["paymentStatus"] = payment["paymentStatus"]
         
         current_app.logger.info(
             "UpdateOrderStatusSuccess | id=%s",

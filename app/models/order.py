@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 from bson import ObjectId
 from app import mongo
 from app.services.pricing_service import PricingService
@@ -10,7 +10,11 @@ from app.utils.serializers import serialize_doc
 class OrderStatus(Enum):
     PENDING_PAYMENT = "PENDING_PAYMENT"
     CONFIRMED = "CONFIRMED"
-    CANCELLED = "CANCELLED"
+    PREPARING = "PREPARING"
+    DISPATCHED = "DISPATCHED"
+    DELIVERED = "DELIVERED"
+    CANCELLED_BY_USER = "CANCELLED_BY_USER"
+    CANCELLED_BY_RESTAURANT = "CANCELLED_BY_RESTAURANT"
     EXPIRED = "EXPIRED"
 
 class Order:
@@ -77,15 +81,9 @@ class Order:
         return order_id
     
     @staticmethod
-    def find_order_by_id(orderId:str,session: Any):
+    def find_order_by_id(orderId:str,session: Optional[Any] = None):
         """Find order by order id"""
-        query = {"_id": ObjectId(orderId)}
-
-        kwargs = {}
-        if session is not None:
-            kwargs["session"] = session
-
-        order = mongo.db.orders.find_one(query, **kwargs)
+        order = mongo.db.orders.find_one({"_id": ObjectId(orderId)}, session=session)
         return serialize_doc(order) if order else None 
     
     @staticmethod
@@ -144,7 +142,7 @@ class Order:
         return serialize_doc(items)    
     
     @staticmethod
-    def update_order(orderId: str, update_data: Any, session: Any):
+    def update_order(orderId: str, update_data: Any, session: Optional[Any] = None):
         """Update order data"""
         update_data['updatedAt'] = datetime.utcnow()
         # Flatten nested fields into dot-notation
