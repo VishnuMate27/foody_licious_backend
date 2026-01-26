@@ -82,44 +82,6 @@ from app.services.payment_service import PaymentService
 
 user_payment_bp = Blueprint('payment',__name__)
 
-@user_payment_bp.route('/generatePaymentRecord', methods = ['POST'])
-def generatePaymentRecord():
-    """Create payment record for an order in database for requesting payment from user/payment gateway"""
-    try:
-        data = request.get_json()
-        orderId = data.get("orderId")
-
-        if not orderId:
-            current_app.logger.warning(
-                "PaymentRecordCreationFailed | reason=OrderIdMissing | payload=%s",
-                data
-            )
-            return jsonify({"error": "orderId is required"}), 400
-        
-        result = PaymentService.generatePaymentRequest(orderId=orderId)
-        
-        current_app.logger.info(
-            "PaymentRecordCreationSuccess | paymentId=%s",
-            result["paymentId"]
-        )
-
-        return jsonify(result), 201
-
-    except BusinessException as e:
-        current_app.logger.warning(
-            "PaymentRecordCreationFailed | orderId=%s | reason=%s",
-            orderId, str(e)
-        )
-        return jsonify({"error": str(e)}), 409        
-          
-    except Exception as e:
-        current_app.logger.error(
-            "PaymentRecordCreationException | error=%s\n%s",
-            str(e),
-            traceback.format_exc()
-        )
-        return jsonify({"error": "Failed to create payment record!", "details": str(e)}), 500      
-
 
 @user_payment_bp.route('/completePayment', methods = ['POST'])
 def completePayment():
@@ -151,7 +113,7 @@ def completePayment():
             "PaymentCompletionFailed | paymentId=%s | reason=%s",
             paymentId, str(e)
         )
-        return jsonify({"error": str(e)}), 409        
+        return jsonify({"error_code": str(e.code),"message": str(e.message)}), 409        
           
     except Exception as e:
         current_app.logger.error(

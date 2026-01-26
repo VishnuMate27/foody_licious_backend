@@ -73,13 +73,7 @@ class Payment:
     @staticmethod
     def find_payment_by_orderId(orderId: str,session: Optional[Any] = None):
         """Find payment by order id"""
-        query = {"orderId": orderId}
-
-        kwargs = {}
-        if session is not None:
-            kwargs["session"] = session
-
-        payment = mongo.db.payments.find_one(query, **kwargs)
+        payment = mongo.db.payments.find_one({"orderId": orderId},session=session)
         return serialize_doc(payment) if payment else None
     
     @staticmethod
@@ -94,3 +88,9 @@ class Payment:
             session=session
         )
         return result.modified_count > 0    
+    
+    @staticmethod
+    def delete_payment(paymentId, session: Any):
+        """Delete Payment from Payments collection of MongoDB"""
+        result = mongo.db.payments.delete_one({"_id": ObjectId(paymentId)},session=session)
+        return result.deleted_count > 0
