@@ -90,7 +90,7 @@ class Cart:
         return result.modified_count > 0
     
     @staticmethod
-    def delete_cart(cartId):
+    def delete_cart(cartId, session: Any):
         """Delete Cart from Carts collection of MongoDB"""
-        result = mongo.db.carts.delete_one({"_id": ObjectId(cartId)})
+        result = mongo.db.carts.delete_one({"_id": ObjectId(cartId)}, session=session)
         return result.deleted_count > 0
