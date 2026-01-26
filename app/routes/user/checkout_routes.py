@@ -13,24 +13,30 @@ class CartStatus(Enum):
     ACTIVE = "active"
     LOCKED = "locked"
 
-@user_checkout_bp.route('/',  methods = ['POST'])
-def checkout():
-    """Checkout the cart and create an order snapshot"""
+@user_checkout_bp.route('/place-order',  methods = ['POST'])
+def placeOrder():
+    """Checkout the cart, create an order snapshot, update user details and place order"""
     try:
         data = request.get_json()
-        userId = data.get("userId")
+        
+        # Fields that can be updated
+        required_fields = ['userId','name', 'address', 'phone']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                current_app.logger.warning(
+                    f"PlaceOrderFailed | reason={field}Required",
+                )
+                return jsonify({"error": f"{field} is required"}), 400        
 
-        if not userId:
-            current_app.logger.warning(
-                "CheckoutFailed | reason=UserIdMissing | payload=%s",
-                data
-            )
-            return jsonify({"error": "userId is required"}), 400
-
-        result = CheckoutService.checkout(userId)
+        userId = data['userId']
+        name = data['name']
+        address = data['address']
+        phone = data['phone']
+        
+        result = CheckoutService.placeOrder(userId=userId,name=name, address=address, phone=phone)
 
         current_app.logger.info(
-            "CheckoutSuccess | userId=%s | orderId=%s | amount=%s",
+            "PlaceOrderSuccess | userId=%s | orderId=%s | amount=%s",
             userId, result["orderId"], result["amount"]
         )
 
@@ -38,17 +44,17 @@ def checkout():
 
     except BusinessException as e:
         current_app.logger.warning(
-            "CheckoutFailed | userId=%s | reason=%s",
+            "PlaceOrderFailed | userId=%s | reason=%s",
             userId, str(e)
         )
-        return jsonify({"error": str(e)}), 409
+        return jsonify({"error_code": str(e.code),"message": str(e.message)}), 409
 
     except Exception as e:
         current_app.logger.error(
-            "CheckoutError | userId=%s | error=%s\n%s",
+            "PlaceOrderError | userId=%s | error=%s\n%s",
             userId, str(e), traceback.format_exc()
         )
-        return jsonify({"error": "Checkout failed"}), 500
+        return jsonify({"error": "Place Order failed"}), 500
    
 # Backend: POST /checkout
 # What backend does (transaction)
@@ -126,7 +132,7 @@ def cancelCheckout():
             "CancelCheckoutFailed | orderId=%s | reason=%s",
             orderId, str(e)
         )
-        return jsonify({"error": str(e)}), 409
+        return jsonify({"error_code": str(e.code),"message": str(e.message)}), 409
 
     except Exception as e:
         current_app.logger.error(
