@@ -45,6 +45,7 @@ class Order:
             "items": self.items,
             "totalCartAmount": self.totalCartAmount,
             "gstCharges": self.gstCharges,
+            "platformFees": self.platformFees,
             "deliveryCharges": self.deliveryCharges,
             "grandTotalAmount": self.grandTotalAmount,
             "status": self.status,
