@@ -14,10 +14,13 @@ class OrderStatus(Enum):
     EXPIRED = "EXPIRED"
 
 class Order:
-    def __init__(self,*,cartId: str, restaurantId: str, userId: str, items: list, totalCartAmount: float, gstCharges: float ,platformFees: float,deliveryCharges: float,grandTotalAmount: float):
+    def __init__(self,*,cartId: str, restaurantId: str, userId: str, name: str, address: str, phone: str, items: list, totalCartAmount: float, gstCharges: float ,platformFees: float,deliveryCharges: float,grandTotalAmount: float):
         self.cartId = cartId
         self.restaurantId = restaurantId
         self.userId = userId
+        self.name = name
+        self.address = address
+        self.phone = phone
         self.items = items
         self.totalCartAmount = totalCartAmount
         self.gstCharges = gstCharges
@@ -36,6 +39,9 @@ class Order:
             "cartId": self.cartId,
             "restaurantId": self.restaurantId,
             "userId": self.userId,
+            "name": self.name,
+            "address": self.address,
+            "phone": self.phone,
             "items": self.items,
             "totalCartAmount": self.totalCartAmount,
             "gstCharges": self.gstCharges,
@@ -50,12 +56,15 @@ class Order:
         return str(result.inserted_id)
     
     @staticmethod
-    def create_from_cart(cart: Any,pricing: Any,session: Any): 
+    def create_from_cart(cart: Any,pricing: Any, name: str, address: str, phone: str, session: Any): 
         """Create order from cart"""
         order = Order(
             cartId = cart["id"],
             restaurantId=cart["restaurantId"],
             userId=cart["userId"],
+            name= name,
+            address=address,
+            phone = phone,
             items=cart["items"],
             totalCartAmount=cart["totalAmount"],
             gstCharges=pricing["gstCharges"],
@@ -79,10 +88,16 @@ class Order:
         return serialize_doc(order) if order else None 
     
     @staticmethod
+    def find_order_by_paymentId(paymentId,session: Any):
+        """Find order by payment id"""
+        order = mongo.db.orders.find_one({"paymentId": paymentId}, session=session)
+        return serialize_doc(order) if order else None  
+    
+    @staticmethod
     def find_orders_by_userId(userId):
         """Find order by user id"""
         order = mongo.db.orders.find({"userId": userId})
-        return serialize_doc(order) if order else None 
+        return serialize_doc(order) if order else None    
     
     @staticmethod
     def find_pending_order_by_userId(userId: str, session: Any):
@@ -104,9 +119,9 @@ class Order:
         return result.modified_count > 0
     
     @staticmethod
-    def delete_cart(cartId):
-        """Delete Cart from Carts collection of MongoDB"""
-        result = mongo.db.carts.delete_one({"_id": ObjectId(cartId)})
+    def delete_order(orderId, session: Any):
+        """Delete Order from Orders collection of MongoDB"""
+        result = mongo.db.orders.delete_one({"_id": ObjectId(orderId)},session=session)
         return result.deleted_count > 0
     
 
